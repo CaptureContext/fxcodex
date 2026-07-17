@@ -1,4 +1,6 @@
 import ArgumentParser
+import Foundation
+import FXCodexClient
 import Testing
 @testable import FXCodexCLI
 
@@ -34,5 +36,21 @@ struct UpdateCommandTests {
 		])
 
 		#expect(command is AppCommand.UpdateCommand)
+	}
+
+	@Test("Defers Homebrew-managed updates to Homebrew")
+	func homebrewManaged() async throws {
+		let executableURL: URL = .init(
+			fileURLWithPath: "/opt/homebrew/Cellar/fxcodex/0.1.0/bin/fxcodex"
+		)
+		let command: AppCommand.UpdateCommand = try .parse([])
+
+		await #expect(throws: FXCodexError.homebrewManagedUpdate) {
+			try await command.run(executableURL: executableURL)
+		}
+		#expect(isHomebrewManagedExecutable(executableURL))
+		#expect(!isHomebrewManagedExecutable(
+			.init(fileURLWithPath: "/Users/example/.local/bin/fxcodex")
+		))
 	}
 }

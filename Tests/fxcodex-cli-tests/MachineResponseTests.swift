@@ -136,6 +136,7 @@ struct MachineResponseTests {
 			(.ambiguousApplicationInstances([42]), "ambiguous_application_instances"),
 			(.codexExecutableNotFound, "codex_executable_not_found"),
 			(.homebrewNotFound, "homebrew_not_found"),
+			(.homebrewManagedUpdate, "homebrew_managed_update"),
 			(.invalidWorkspaceName("Work"), "invalid_workspace_name"),
 			(.primaryWorkspaceMutation, "primary_workspace_mutation"),
 			(.raycastBetaUnsupportedPlatform, "raycast_beta_unsupported_platform"),

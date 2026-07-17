@@ -16,7 +16,7 @@ extension DependencyValues {
 		static var liveValue: SelfInstallationClient {
 			.init(uninstall: { executableURL in
 				let executableURL: URL = executableURL.standardizedFileURL.resolvingSymlinksInPath()
-				if Self.isHomebrewManaged(executableURL) {
+				if isHomebrewManagedExecutable(executableURL) {
 					let exitCode: Int32 = try runProcess(.init(
 						executable: "brew",
 						arguments: ["uninstall", "fxcodex"],
@@ -29,14 +29,6 @@ extension DependencyValues {
 				try FileManager.default.removeItem(at: executableURL)
 				return .direct
 			})
-		}
-
-		private static func isHomebrewManaged(_ executableURL: URL) -> Bool {
-			let components: [String] = executableURL.pathComponents
-			guard let cellarIndex = components.firstIndex(of: "Cellar")
-			else { return false }
-			return components.indices.contains(cellarIndex + 1)
-			&& components[cellarIndex + 1] == "fxcodex"
 		}
 	}
 
