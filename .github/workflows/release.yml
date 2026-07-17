@@ -363,3 +363,37 @@ jobs:
             "$RUNNER_TEMP/developer-id.p12" \
             "$RUNNER_TEMP/AuthKey.p8" \
             "$RUNNER_TEMP/fxcodex-signing-probe"
+
+  update-homebrew:
+    name: Notify Homebrew tap
+    needs:
+      - publish
+      - validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch formula update
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_DISPATCH_TOKEN }}
+          RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$GH_TOKEN" ]]
+          then
+            echo "HOMEBREW_TAP_DISPATCH_TOKEN is not configured." >&2
+            exit 1
+          fi
+
+          jq -n \
+            --arg formula fxcodex \
+            --arg version "$RELEASE_VERSION" \
+            '{
+              event_type: "formula-release",
+              client_payload: {
+                formula: $formula,
+                version: $version
+              }
+            }' \
+          | gh api \
+              --method POST \
+              repos/CaptureContext/homebrew-tap/dispatches \
+              --input -
