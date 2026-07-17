@@ -1,5 +1,7 @@
 # fxcodex
 
+[![CI](https://github.com/CaptureContext/fxcodex/actions/workflows/ci.yml/badge.svg)](https://github.com/CaptureContext/fxcodex/actions/workflows/ci.yml) [![Swift 6.3](https://img.shields.io/badge/Swift-6.3-ED523F.svg?style=flat)](https://swift.org/download/) ![Platforms](https://img.shields.io/badge/platforms-macOS_14_or_later-ED523F.svg?style=flat) [![@capture_context](https://img.shields.io/badge/contact-@capture__context-1DA1F2.svg?style=flat&logo=twitter)](https://twitter.com/capture_context)
+
 **Independent workspaces and practical extras for Codex on macOS.**
 
 `fxcodex` is an unofficial companion CLI for developers who want to keep
