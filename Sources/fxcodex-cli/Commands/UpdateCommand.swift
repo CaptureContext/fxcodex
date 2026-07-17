@@ -1,5 +1,6 @@
 import ArgumentParser
 import Dependencies
+import Foundation
 import FXCodexClient
 
 extension AppCommand {
@@ -38,13 +39,19 @@ extension AppCommand {
 		internal init() {}
 
 		internal func run() async throws {
+			try await self.run(executableURL: currentExecutableURL())
+		}
+
+		internal func run(executableURL: URL) async throws {
+			guard !isHomebrewManagedExecutable(executableURL)
+			else { throw FXCodexError.homebrewManagedUpdate }
 			@Dependency(\.fxCodexClient) var client: FXCodexClient
 			guard let currentVersion = SemanticVersion(AppCommand.version)
 			else { throw ValidationError("fxcodex has an invalid embedded version.") }
 			let result: UpdateResult = try await client.update(
 				currentVersion,
 				self.channel.value,
-				currentExecutableURL()
+				executableURL
 			)
 
 			if machineOutputRequested(self.json) {

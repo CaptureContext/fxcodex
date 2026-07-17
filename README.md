@@ -222,6 +222,10 @@ updates to the universal artifact, while an architecture-specific installation
 updates to its matching architecture. Every downloaded executable is verified
 against its published SHA-256 checksum before replacement.
 
+Homebrew-managed installations are updated with `brew upgrade fxcodex`.
+`fxcodex update` and automatic executable replacement intentionally defer to
+Homebrew for those installations.
+
 Automatic checks run at most once every 24 hours and do not prevent the
 requested command from running if a check fails. Configure an update policy
 anchored at a minimum version with:

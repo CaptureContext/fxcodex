@@ -6,7 +6,7 @@ import FXCodexClient
 
 @main
 internal struct AppCommand: AsyncParsableCommand {
-	internal static let version: String = "0.1.0"
+	internal static let version: String = "0.1.1"
 	internal static let machineEncodingFailureResponse: String = """
 		{
 		  "api_version": 1,
@@ -96,10 +96,12 @@ internal struct AppCommand: AsyncParsableCommand {
 		@Dependency(\.fxCodexClient) var client: FXCodexClient
 		guard let version = SemanticVersion(Self.version)
 		else { throw ValidationError("fxcodex has an invalid embedded version.") }
+		let executableURL: URL = currentExecutableURL()
 		return try await client.applyAutomaticPreferences(
 			version,
-			currentExecutableURL(),
-			!(try environmentSwitch(
+			executableURL,
+			!isHomebrewManagedExecutable(executableURL)
+			&& !(try environmentSwitch(
 				named: "FXCODEX_DISABLE_AUTO_UPDATE"
 			)
 			?? false)

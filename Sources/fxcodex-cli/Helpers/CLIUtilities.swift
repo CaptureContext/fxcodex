@@ -123,6 +123,16 @@ internal func currentExecutableURL() -> URL {
 	.resolvingSymlinksInPath()
 }
 
+internal func isHomebrewManagedExecutable(_ executableURL: URL) -> Bool {
+	let components: [String] = executableURL.standardizedFileURL
+		.resolvingSymlinksInPath()
+		.pathComponents
+	guard let cellarIndex = components.firstIndex(of: "Cellar")
+	else { return false }
+	return components.indices.contains(cellarIndex + 1)
+		&& components[cellarIndex + 1] == "fxcodex"
+}
+
 internal func machineOutputRequested(
 	_ localValue: Bool?
 ) -> Bool {

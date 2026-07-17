@@ -6,6 +6,7 @@ public enum FXCodexError: Error, Equatable, LocalizedError, Sendable {
 	case ambiguousApplicationInstances([Int32])
 	case codexExecutableNotFound
 	case homebrewNotFound
+	case homebrewManagedUpdate
 	case invalidWorkspaceName(String)
 	case primaryWorkspaceMutation
 	case raycastBetaUnsupportedPlatform
@@ -37,6 +38,9 @@ public enum FXCodexError: Error, Equatable, LocalizedError, Sendable {
 
 		case .homebrewNotFound:
 			"homebrew_not_found"
+
+		case .homebrewManagedUpdate:
+			"homebrew_managed_update"
 
 		case .invalidWorkspaceName:
 			"invalid_workspace_name"
@@ -98,6 +102,9 @@ public enum FXCodexError: Error, Equatable, LocalizedError, Sendable {
 
 		case .homebrewNotFound:
 			"Homebrew could not be found in PATH."
+
+		case .homebrewManagedUpdate:
+			"This fxcodex installation is managed by Homebrew. Run 'brew upgrade fxcodex' instead."
 
 		case let .invalidWorkspaceName(name):
 			"Invalid workspace name '\(name)'. Use lowercase letters, numbers, and hyphens."
