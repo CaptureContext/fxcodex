@@ -47,6 +47,12 @@ already running, and multiple desktop workspaces can remain open at once.
 
 ## Installation
 
+### Brew
+
+```sh
+brew install capturecontext/tap/fxcodex
+```
+
 ### Download a release
 
 Download these files from the
