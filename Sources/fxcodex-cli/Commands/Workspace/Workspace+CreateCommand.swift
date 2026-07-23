@@ -8,8 +8,8 @@ extension AppCommand.WorkspaceCommand {
 			abstract: "Create a managed workspace."
 		)
 
-		@Argument(help: "Workspace name.")
-		internal var name: String
+		@Argument(help: "Workspace name. Omit to enter interactively.")
+		internal var name: String?
 
 		@Flag(help: "Make the new workspace current.")
 		internal var use: Bool = false
@@ -27,8 +27,25 @@ extension AppCommand.WorkspaceCommand {
 		internal init() {}
 
 		internal func run() async throws {
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
-			let workspace: Workspace = try await client.createWorkspace(self.name)
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
+			@Dependency(\._fxcodexTerminalPrompts)
+			var prompts: TerminalPromptsClient
+
+			let json = machineOutputRequested(self.json)
+
+			let name: String
+
+			if let provided = self.name {
+				name = provided
+			} else if json {
+				throw ValidationError("A workspace name is required when using --json.")
+			} else if let entered = try prompts.text("Workspace name:", "work") {
+				name = entered
+			} else { return }
+
+			let workspace: Workspace = try await client.createWorkspace(name)
 
 			if self.use {
 				try await client.useWorkspace(workspace.name)
@@ -38,7 +55,7 @@ extension AppCommand.WorkspaceCommand {
 				_ = try await client.openWorkspace(workspace.name)
 			}
 
-			if machineOutputRequested(self.json) {
+			if json {
 				try printMachineResponse(workspace)
 				return
 			}

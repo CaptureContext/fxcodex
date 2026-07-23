@@ -1,7 +1,9 @@
 import Dependencies
 import Foundation
 import Testing
-@_spi(Internals) @testable import FXCodexClient
+@_spi(Internals)
+@testable
+import FXCodexClient
 
 @Suite("Workspace client")
 struct WorkspaceClientTests {
@@ -17,7 +19,9 @@ struct WorkspaceClientTests {
 			$0._fxcodexPaths = .init(rootURL: fixture.rootURL)
 			$0._fxcodexRaycast = .fixture
 		} operation: {
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
 			let workspace: Workspace = try await client.createWorkspace("work")
 			#expect(workspace.kind == .managed)
 			#expect(try await client.workspaces().map(\.name) == ["primary", "work"])
@@ -38,10 +42,7 @@ struct WorkspaceClientTests {
 		}
 
 		let snapshot: CodexApplicationSpy.Snapshot = await application.snapshot()
-		#expect(snapshot.renamedWorkspaces == [.init(
-			oldName: "work",
-			newName: "work-renamed"
-		)])
+		#expect(snapshot.renamedWorkspaces.isEmpty)
 		#expect(snapshot.removedWorkspaceNames == ["work-renamed"])
 	}
 
@@ -57,7 +58,9 @@ struct WorkspaceClientTests {
 			$0._fxcodexPaths = .init(rootURL: fixture.rootURL)
 			$0._fxcodexRaycast = .fixture
 		} operation: {
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
 			let workspace: Workspace = try await client.createWorkspace("work")
 			await application.setProcessID(9_001, forWorkspaceNamed: workspace.name)
 
@@ -83,7 +86,9 @@ struct WorkspaceClientTests {
 			$0._fxcodexPaths = .init(rootURL: fixture.rootURL)
 			$0._fxcodexRaycast = .fixture
 		} operation: {
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
 			let work: Workspace = try await client.createWorkspace("work")
 			let personal: Workspace = try await client.createWorkspace("personal")
 			await application.setProcessID(9_001, forWorkspaceNamed: personal.name)

@@ -16,13 +16,16 @@ extension DependencyValues {
 		static var liveValue: SelfInstallationClient {
 			.init(uninstall: { executableURL in
 				let executableURL: URL = executableURL.standardizedFileURL.resolvingSymlinksInPath()
+
 				if isHomebrewManagedExecutable(executableURL) {
 					let exitCode: Int32 = try runProcess(.init(
 						executable: "brew",
 						arguments: ["uninstall", "fxcodex"],
 						environment: [:]
 					))
+
 					guard exitCode == 0 else { throw ExitCode(exitCode) }
+
 					return .homebrew
 				}
 

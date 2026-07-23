@@ -19,6 +19,7 @@ extension AutoUpdatePolicy: Codable {
 			SemanticVersion.self,
 			forKey: .from
 		)
+
 		switch channel {
 		case "disabled":
 			self = .disabled
@@ -46,6 +47,7 @@ extension AutoUpdatePolicy: Codable {
 
 	public func encode(to encoder: any Encoder) throws {
 		var container = encoder.container(keyedBy: CodingKeys.self)
+
 		switch self {
 		case .disabled:
 			try container.encode("disabled", forKey: .channel)

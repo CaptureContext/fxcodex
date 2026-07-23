@@ -1,7 +1,9 @@
 import Dependencies
 import Foundation
 import Testing
-@_spi(Internals) @testable import FXCodexClient
+@_spi(Internals)
+@testable
+import FXCodexClient
 
 @Suite("Codex invocation client")
 struct CodexInvocationClientTests {
@@ -17,7 +19,9 @@ struct CodexInvocationClientTests {
 			$0._fxcodexPaths = .init(rootURL: fixture.rootURL)
 			$0._fxcodexRaycast = .fixture
 		} operation: {
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
 			let primaryInvocation: CommandInvocation = try await client.codexInvocation(
 				Workspace.primaryName,
 				["--version"]
@@ -55,7 +59,9 @@ struct CodexInvocationClientTests {
 			$0._fxcodexPaths = .init(rootURL: fixture.rootURL)
 			$0._fxcodexRaycast = .fixture
 		} operation: {
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
 			await #expect(throws: FXCodexError.workspaceNotFound("missing")) {
 				try await client.codexInvocation("missing", [])
 			}

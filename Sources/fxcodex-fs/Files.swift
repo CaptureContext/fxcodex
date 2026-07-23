@@ -257,6 +257,7 @@ public final class Storage<LocationType: Location> {
 				if !fileManager.createFile(atPath: path, contents: nil) {
 					throw WriteError(path: path, reason: .fileCreationFailed)
 				}
+
 			case .folder:
 				do {
 					try fileManager.createDirectory(atPath: path, withIntermediateDirectories: true)
@@ -273,6 +274,7 @@ public final class Storage<LocationType: Location> {
 			guard !path.isEmpty else {
 				throw LocationError(path: path, reason: .emptyFilePath)
 			}
+
 		case .folder:
 			if path.isEmpty { path = fileManager.currentDirectoryPath }
 			if !path.hasSuffix("/") { path += "/" }
@@ -415,8 +417,10 @@ extension Storage where LocationType == Folder {
 			}
 		}
 
-		guard fileManager.createFile(atPath: filePath, contents: contents),
-					let storage = try? Storage<File>(path: filePath, fileManager: fileManager) else {
+		guard
+			fileManager.createFile(atPath: filePath, contents: contents),
+			let storage = try? Storage<File>(path: filePath, fileManager: fileManager)
+		else {
 			throw WriteError(path: filePath, reason: .fileCreationFailed)
 		}
 

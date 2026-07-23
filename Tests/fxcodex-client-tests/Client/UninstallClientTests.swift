@@ -1,7 +1,9 @@
 import Dependencies
 import Foundation
 import Testing
-@_spi(Internals) @testable import FXCodexClient
+@_spi(Internals)
+@testable
+import FXCodexClient
 
 @Suite("Uninstall client")
 struct UninstallClientTests {
@@ -15,7 +17,9 @@ struct UninstallClientTests {
 			$0._fxcodexApplication = CodexApplicationSpy().client
 			$0._fxcodexPaths = .init(rootURL: fixture.rootURL)
 		} operation: {
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
 			let workspace: Workspace = try await client.createWorkspace("work")
 			let codexHomeURL: URL = try #require(workspace.codexHomeURL)
 			let dataURL: URL = codexHomeURL.appending(path: "data.json")
@@ -23,8 +27,7 @@ struct UninstallClientTests {
 			_ = try await client.integrations.raycast.installScriptCommands(
 				fixture.scriptsURL,
 				fixture.executableURL,
-				true,
-				true
+				false
 			)
 
 			try await client.uninstallData(.leave)
@@ -48,7 +51,9 @@ struct UninstallClientTests {
 			$0._fxcodexApplication = CodexApplicationSpy().client
 			$0._fxcodexPaths = .init(rootURL: fixture.rootURL)
 		} operation: {
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
 			let workspace: Workspace = try await client.createWorkspace("work")
 			let codexHomeURL: URL = try #require(workspace.codexHomeURL)
 			try Data("data".utf8).write(to: codexHomeURL.appending(path: "data.json"))
@@ -73,7 +78,9 @@ struct UninstallClientTests {
 			$0._fxcodexApplication = CodexApplicationSpy().client
 			$0._fxcodexPaths = .init(rootURL: fixture.rootURL)
 		} operation: {
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
 			_ = try await client.createWorkspace("work")
 
 			try await client.uninstallData(.delete)
@@ -93,7 +100,9 @@ struct UninstallClientTests {
 			$0._fxcodexApplication = application.client
 			$0._fxcodexPaths = .init(rootURL: fixture.rootURL)
 		} operation: {
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
 			_ = try await client.createWorkspace("work")
 
 			await #expect(throws: FXCodexError.workspaceIsRunning("work")) {

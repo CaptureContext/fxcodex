@@ -19,6 +19,31 @@ name.
 
 `fxcodex` is not affiliated with or endorsed by OpenAI or Raycast.
 
+## Table of contents
+
+- [How it works](#how-it-works)
+- [Requirements](#requirements)
+- [Installation](#installation)
+  - [Brew](#brew)
+  - [Download a release](#download-a-release)
+  - [Build from source](#build-from-source)
+- [Quick start](#quick-start)
+- [Desktop and terminal usage](#desktop-and-terminal-usage)
+- [Managing workspaces](#managing-workspaces)
+- [App naming](#app-naming)
+- [Updates](#updates)
+- [Integration attributes](#integration-attributes)
+- [Raycast integration](#raycast-integration)
+  - [Script Commands](#script-commands)
+  - [Extension](#extension)
+- [Machine-readable output](#machine-readable-output)
+- [Uninstalling](#uninstalling)
+- [Data and privacy](#data-and-privacy)
+  - [Upgrading from 0.1.x to 0.2.y](#upgrading-from-01x-to-02y)
+- [Development](#development)
+- [Publishing a release](#publishing-a-release)
+- [License](#license)
+
 ## How it works
 
 A **workspace** is an isolated Codex profile, not a source-code project or
@@ -253,6 +278,22 @@ Automatic updates apply only to an external `fxcodex` executable. Applications
 that bundle `fxcodex`, such as the companion Raycast extension, manage their
 bundled executable separately.
 
+## Integration attributes
+
+Frontends can store integration-owned JSON values in the shared fxcodex
+configuration. Read, replace, or remove either an integration root or a nested
+attribute selected with `--path`:
+
+```sh
+fxcodex integrations attributes get raycast --path script_commands
+fxcodex integrations attributes set raycast '{"enabled":true}' --path settings
+fxcodex integrations attributes remove raycast --path settings
+```
+
+Omitting the integration identifier or value starts guided input in an
+interactive terminal. Values that parse as JSON retain their JSON type;
+otherwise, `set` stores the input as a string.
+
 ## Raycast integration
 
 ### Script Commands
@@ -276,14 +317,17 @@ fxcodex integrations raycast uninstall script-command
 By default, installation creates commands for every workspace and records the
 integration so commands remain synchronized when workspaces are created,
 renamed, erased, or deleted. Use `--current-only` during installation to create
-only the current workspace's command, and `--directory <path>` to select the
-Raycast Script Commands directory explicitly.
+only the command for the workspace that is current at installation time. That
+workspace remains selected by its stable ID if it is renamed; newly created or
+later-selected workspaces are not added automatically. Reinstall without
+`--current-only` to return to automatic all-workspace management. Use
+`--directory <path>` to select the Raycast Script Commands directory explicitly.
 
 ### Extension
 
 A companion Raycast extension provides workspace navigation, management,
 custom icons, executable selection, and preferences. It is prepared separately
-for Raycast Store submission after the first CLI release; the Script Commands
+for [Raycast Store submission](https://github.com/raycast/extensions/pull/29538); the Script Commands
 above are available without it.
 
 ## Machine-readable output
@@ -294,11 +338,20 @@ integrations:
 ```sh
 fxcodex --json status --all
 FXCODEX_JSON=1 fxcodex workspace list
+fxcodex integrations attributes get raycast --path script_commands --json
+fxcodex integrations raycast install script-command \
+  --directory "$HOME/.config/raycast/script-commands" \
+  --json
 ```
 
 Use `--no-json` to override the environment variable. Interactive selection is
 disabled when required input is missing in JSON mode, so automation should pass
-workspace names and confirmation flags explicitly.
+workspace names and confirmation flags explicitly. Attribute commands require
+an integration identifier, and `attributes set` also requires a value. JSON
+`get` and `set` responses contain the attribute value; `remove` returns the
+integration identifier and removed path. API-owned keys use lower snake case;
+opaque integration attribute keys are preserved exactly, and integrations are
+encouraged to use lower snake case for them.
 
 ## Uninstalling
 
@@ -325,18 +378,49 @@ delete it manually after the command completes.
 ```text
 ~/Library/Application Support/fxcodex/
 ├── configuration.json
-├── instances.json
 ├── preferences.json
+├── runtime.json
+├── storage.lock
 ├── update-state.json
 └── workspaces/
-    └── <workspace-name>/
-        ├── codex-home/
-        └── user-data/
+    └── <workspace-id>/
+        ├── workspace.json
+        ├── codex-home/       # managed workspaces only
+        └── user-data/        # managed workspaces only
 ```
 
-The `primary` workspace continues to use Codex's normal locations. Managed
-workspace directories contain account-specific Codex state; treat them as
-private data and do not commit or share them.
+`configuration.json` stores the current workspace ID and integration-owned
+attributes. `runtime.json` contains transient application-instance records, and
+`workspace.json` maps each stable workspace ID to its display name and kind.
+Some files are created only after their corresponding feature is used.
+
+The `primary` workspace has metadata under `workspaces/`, but continues to use
+Codex's normal data locations. Managed workspace directories contain
+account-specific Codex state; treat the complete support directory as private
+data and do not commit or share it.
+
+### Upgrading from 0.1.x to 0.2.y
+
+The first 0.2.x command migrates schema 1.0 storage to schema 2.0. In an
+interactive terminal, `fxcodex` explains the migration and requests
+confirmation. Non-interactive callers proceed automatically because the
+migration does not require additional input.
+
+Close every managed Codex workspace before running the first 0.2.x command.
+Migration refuses to move a workspace whose recorded Codex process is still
+running. A live Codex process retains its original `CODEX_HOME` and user-data
+paths and can otherwise recreate the legacy name-based directory after it is
+moved.
+
+The migration assigns stable IDs, moves managed workspace directories from
+name-based to ID-based paths, converts runtime records and integration
+attributes, and validates the new storage before continuing. An interrupted
+migration records its progress in `.migration.json` and resumes on the next
+invocation.
+
+Schema 2.0 is not readable by fxcodex 0.1.x. Back up
+`~/Library/Application Support/fxcodex` before upgrading if you may need to
+return to 0.1.x.
 
 ## Development
 
@@ -348,6 +432,11 @@ make test
 make release
 make universal
 ```
+
+`make universal` cross-builds the Intel slice with SwiftPM's native build
+engine so macro plugins remain executable on the Apple Silicon build host. It
+works with the Swift 6.3 toolchain used by CI and the Swift 6.4 toolchain in
+Xcode 27; Rosetta is not required.
 
 The package targets macOS 14 and uses Swift 6 language mode. Run
 `fxcodex help <command>` or `fxcodex <command> --help` for the complete CLI

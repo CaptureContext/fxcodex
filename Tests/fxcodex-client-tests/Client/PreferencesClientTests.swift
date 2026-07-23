@@ -1,7 +1,9 @@
 import Dependencies
 import Foundation
 import Testing
-@_spi(Internals) @testable import FXCodexClient
+@_spi(Internals)
+@testable
+import FXCodexClient
 
 @Suite("Preferences client")
 struct PreferencesClientTests {
@@ -17,7 +19,8 @@ struct PreferencesClientTests {
 			$0._fxcodexPaths = .init(rootURL: fixture.rootURL)
 			$0._fxcodexRaycast = .fixture
 		} operation: {
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
 
 			let initialPreferences: FXCodexPreferences = try await client.preferences()
 			#expect(initialPreferences == .init(autoRename: false))
@@ -54,7 +57,9 @@ struct PreferencesClientTests {
 			$0._fxcodexPaths = .init(rootURL: fixture.rootURL)
 			$0._fxcodexRaycast = .fixture
 		} operation: {
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
 			_ = try await client.setAutoRename(true)
 			let warnings: [FXCodexWarning] = try await client.applyAutomaticPreferences(
 				.init(major: 0, minor: 1, patch: 0),
@@ -84,7 +89,9 @@ struct PreferencesClientTests {
 			$0._fxcodexPaths = .init(rootURL: fixture.rootURL)
 			$0._fxcodexRaycast = .fixture
 		} operation: {
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
 			_ = try await client.setAutoRename(true)
 			let warnings: [FXCodexWarning] = try await client.applyAutomaticPreferences(
 				.init(major: 0, minor: 1, patch: 0),
@@ -123,7 +130,9 @@ struct PreferencesClientTests {
 				}
 			)
 		} operation: {
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
 			let minimumVersion: SemanticVersion = .init(major: 0, minor: 9, patch: 0)
 			_ = try await client.setAutoUpdate(.minor(from: minimumVersion))
 			let warnings: [FXCodexWarning] = try await client.applyAutomaticPreferences(
@@ -166,7 +175,9 @@ struct PreferencesClientTests {
 				}
 			)
 		} operation: {
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
 			_ = try await client.setAutoUpdate(.latest(from: .init(
 				major: 0,
 				minor: 1,

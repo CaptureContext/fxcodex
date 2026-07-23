@@ -59,12 +59,16 @@ final class GitHubReleaseUpdater: @unchecked Sendable {
 		executableURL: URL
 	) async throws -> UpdateResult {
 		let releases: [Release] = try await self.releases()
-		guard let release = Self.selectRelease(
-			from: releases,
-			currentVersion: currentVersion,
-			channel: channel,
-			minimumVersion: minimumVersion
-		), let version = release.version else {
+
+		guard
+			let release = Self.selectRelease(
+				from: releases,
+				currentVersion: currentVersion,
+				channel: channel,
+				minimumVersion: minimumVersion
+			),
+			let version = release.version
+		else {
 			return .init(
 				outcome: .alreadyCurrent,
 				previousVersion: currentVersion,
@@ -76,9 +80,12 @@ final class GitHubReleaseUpdater: @unchecked Sendable {
 			currentVersion: currentVersion,
 			executableURL: executableURL
 		)
+
 		guard let artifact = release.assets.first(where: { $0.name == artifactName })
 		else { throw FXCodexError.updateAssetMissing(artifactName) }
+
 		let checksumName: String = "\(artifactName).sha256"
+
 		guard let checksum = release.assets.first(where: { $0.name == checksumName })
 		else { throw FXCodexError.updateAssetMissing(checksumName) }
 
@@ -137,8 +144,7 @@ final class GitHubReleaseUpdater: @unchecked Sendable {
 			}
 		}
 		.max { lhs, rhs in
-			guard let lhsVersion = lhs.version, let rhsVersion = rhs.version
-			else { return false }
+			guard let lhsVersion = lhs.version, let rhsVersion = rhs.version else { return false }
 			return lhsVersion < rhsVersion
 		}
 	}
@@ -175,6 +181,7 @@ extension GitHubReleaseUpdater {
 
 	private func data(for request: URLRequest) async throws -> Data {
 		let (data, response) = try await self.session.data(for: request)
+
 		guard
 			let response = response as? HTTPURLResponse,
 			(200..<300).contains(response.statusCode)
@@ -183,6 +190,7 @@ extension GitHubReleaseUpdater {
 				(response as? HTTPURLResponse)?.statusCode ?? 0
 			)
 		}
+
 		return data
 	}
 
@@ -192,6 +200,7 @@ extension GitHubReleaseUpdater {
 	) throws {
 		let executableURL: URL = executableURL.standardizedFileURL.resolvingSymlinksInPath()
 		let values = try executableURL.resourceValues(forKeys: [.isRegularFileKey])
+
 		guard values.isRegularFile == true
 		else { throw FXCodexError.updateExecutableInvalid(executableURL) }
 
@@ -220,13 +229,17 @@ extension GitHubReleaseUpdater {
 	) async throws -> String {
 		let release: Release = try await self.release(tag: currentVersion.description)
 		let checksumName: String = "\(Self.universalArtifactName).sha256"
+
 		guard let checksum = release.assets.first(where: { $0.name == checksumName })
 		else { throw FXCodexError.updateAssetMissing(checksumName) }
+
 		let checksumData: Data = try await self.download(checksum.browserDownloadURL)
 		let executableURL: URL = executableURL.standardizedFileURL.resolvingSymlinksInPath()
 		let values = try executableURL.resourceValues(forKeys: [.isRegularFileKey])
+
 		guard values.isRegularFile == true
 		else { throw FXCodexError.updateExecutableInvalid(executableURL) }
+
 		let executableData: Data = try .init(contentsOf: executableURL)
 		if try Self.checksumMatches(checksumData, artifact: executableData) {
 			return Self.universalArtifactName
@@ -259,10 +272,13 @@ extension GitHubReleaseUpdater {
 		_ checksumData: Data,
 		artifact: Data
 	) throws -> Bool {
-		guard let checksumContents = String(data: checksumData, encoding: .utf8),
+		guard
+			let checksumContents = String(data: checksumData, encoding: .utf8),
 			let expectedChecksum = checksumContents.split(whereSeparator: \.isWhitespace).first
 		else { throw FXCodexError.updateChecksumInvalid }
+
 		let normalizedChecksum: String = expectedChecksum.lowercased()
+
 		guard
 			normalizedChecksum.count == 64,
 			normalizedChecksum.allSatisfy({ $0.isHexDigit })

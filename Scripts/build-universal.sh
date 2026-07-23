@@ -7,6 +7,7 @@ CONFIGURATION="${CONFIGURATION:-release}"
 MACOS_DEPLOYMENT_TARGET="${MACOS_DEPLOYMENT_TARGET:-14.0}"
 SCRATCH_PATH="${SCRATCH_PATH:-.build/universal}"
 OUTPUT_PATH="${OUTPUT_PATH:-dist/${PRODUCT}-universal-apple-darwin}"
+BUILD_SYSTEM="${BUILD_SYSTEM:-native}"
 SWIFT="${SWIFT:-swift}"
 XCRUN="${XCRUN:-xcrun}"
 
@@ -23,6 +24,7 @@ usage() {
 		"  MACOS_DEPLOYMENT_TARGET    Minimum macOS version (default: 14.0)" \
 		"  SCRATCH_PATH               SwiftPM scratch path (default: .build/universal)" \
 		"  OUTPUT_PATH                Output executable path" \
+		"  BUILD_SYSTEM               SwiftPM build system (default: native)" \
 		"  SWIFT                      Swift executable (default: swift)" \
 		"  XCRUN                      xcrun executable (default: xcrun)"
 }
@@ -56,21 +58,25 @@ esac
 build_architecture() {
 	architecture="$1"
 	triple="${architecture}-apple-macosx${MACOS_DEPLOYMENT_TARGET}"
+	architecture_scratch_path="$SCRATCH_PATH/$architecture"
 
 	printf 'Building %s for %s...\n' "$PRODUCT" "$triple"
 	"$SWIFT" build \
 		--package-path "$REPOSITORY_ROOT" \
-		--scratch-path "$SCRATCH_PATH" \
+		--scratch-path "$architecture_scratch_path" \
 		--configuration "$CONFIGURATION" \
 		--product "$PRODUCT" \
-		--triple "$triple"
+		--triple "$triple" \
+		--build-system "$BUILD_SYSTEM"
 }
+
+rm -f "$OUTPUT_PATH" "$OUTPUT_PATH.sha256"
 
 build_architecture arm64
 build_architecture x86_64
 
-ARM64_EXECUTABLE="$SCRATCH_PATH/arm64-apple-macosx/$CONFIGURATION/$PRODUCT"
-X86_64_EXECUTABLE="$SCRATCH_PATH/x86_64-apple-macosx/$CONFIGURATION/$PRODUCT"
+ARM64_EXECUTABLE="$SCRATCH_PATH/arm64/arm64-apple-macosx/$CONFIGURATION/$PRODUCT"
+X86_64_EXECUTABLE="$SCRATCH_PATH/x86_64/x86_64-apple-macosx/$CONFIGURATION/$PRODUCT"
 OUTPUT_DIRECTORY=$(dirname -- "$OUTPUT_PATH")
 OUTPUT_NAME=$(basename -- "$OUTPUT_PATH")
 
@@ -91,7 +97,8 @@ mkdir -p "$OUTPUT_DIRECTORY"
 	"$X86_64_EXECUTABLE" \
 	-output "$OUTPUT_PATH"
 chmod 755 "$OUTPUT_PATH"
-"$XCRUN" lipo "$OUTPUT_PATH" -verify_arch arm64 x86_64
+"$XCRUN" lipo "$OUTPUT_PATH" -verify_arch arm64
+"$XCRUN" lipo "$OUTPUT_PATH" -verify_arch x86_64
 
 (
 	cd "$OUTPUT_DIRECTORY"

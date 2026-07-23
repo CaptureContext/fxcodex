@@ -18,7 +18,9 @@ extension AppCommand.PreferencesCommand {
 		internal init() {}
 
 		internal func run() async throws {
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
 			let preferences: FXCodexPreferences = try await client.preferences()
 
 			if machineOutputRequested(self.json) {

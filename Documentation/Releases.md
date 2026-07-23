@@ -89,6 +89,12 @@ dist/fxcodex-universal-apple-darwin
 dist/fxcodex-universal-apple-darwin.sha256
 ```
 
+The script uses separate per-architecture scratch directories and SwiftPM's
+native build engine. This keeps build-tool and macro-plugin executables on the
+host architecture while Xcode 27 cross-compiles the Intel product slice. Xcode
+27 ships an arm64-only Swift toolchain, so running the compiler under Rosetta
+is neither required nor supported.
+
 Override `OUTPUT_PATH` when invoking the script directly to place the binary
 elsewhere, including the Raycast extension's `assets/bin` directory. The
 universal artifact is the default choice for manual installation and extension

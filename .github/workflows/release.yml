@@ -201,7 +201,8 @@ jobs:
             "$intel_artifact" \
             -output "$universal_artifact"
           chmod 755 "$universal_artifact"
-          xcrun lipo "$universal_artifact" -verify_arch arm64 x86_64
+          xcrun lipo "$universal_artifact" -verify_arch arm64
+          xcrun lipo "$universal_artifact" -verify_arch x86_64
 
       - name: Import Developer ID identity
         shell: bash

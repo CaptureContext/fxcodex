@@ -1,13 +1,13 @@
-import Foundation
-import FXCodexFS
 import Dependencies
 import DependenciesMacros
+import Foundation
 
 @DependencyClient
 public struct WorkspacesStorageClient: Sendable {
 	public var prepare: @Sendable () throws -> Void
 	public var list: @Sendable () throws -> [Workspace]
 	public var findWorkspace: @Sendable (_ named: String?) throws -> Workspace
+	public var findWorkspaceByID: @Sendable (_ id: WorkspaceID) throws -> Workspace
 	public var currentWorkspace: @Sendable () throws -> Workspace
 	public var create: @Sendable (String) throws -> Workspace
 	public var save: @Sendable (Workspace) throws -> Workspace
@@ -25,185 +25,199 @@ extension DependencyValues {
 				prepare: storage.prepare,
 				list: storage.workspaces,
 				findWorkspace: storage.workspace(named:),
-				currentWorkspace: { try storage.workspace(named: storage.currentWorkspaceName()) },
+				findWorkspaceByID: storage.workspace(id:),
+				currentWorkspace: storage.currentWorkspace,
 				create: storage.createWorkspace,
 				save: storage.saveWorkspace,
-				delete: { try storage.deleteWorkspace(named: $0.name) },
-				erase: { try storage.eraseWorkspace(named: $0.name) },
-				rename: { try storage.renameWorkspace(from: $0.name, to: $1) },
-				setCurrent: { try storage.useWorkspace(named: $0.name) }
+				delete: { try storage.deleteWorkspace(id: $0.id) },
+				erase: { try storage.eraseWorkspace(id: $0.id) },
+				rename: { try storage.renameWorkspace(id: $0.id, to: $1) },
+				setCurrent: { try storage.useWorkspace(id: $0.id) }
 			)
 		}
 	}
 
 	@_spi(Internals)
 	public var _fxcodexWorkspaces: WorkspacesStorageClient {
+
 		get { self[WorkspacesStorageClientKey.self] }
 		set { self[WorkspacesStorageClientKey.self] = newValue }
 	}
 }
 
 public final class WorkspacesStorage: @unchecked Sendable {
-	private let decoder: JSONDecoder
+	private let decoder = JSONDecoder()
 	private let encoder: JSONEncoder
 	private let fileManager: FileManager
-
-	@Dependency(\._fxcodexPaths)
-	private var paths: FXCodexPaths
+	private let lock: StorageLock
+	private let paths: FXCodexPaths
 
 	public init(fileManager: FileManager) {
-		let encoder: JSONEncoder = FXCodexJSONCoding.encoder()
-		encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+		@Dependency(\._fxcodexPaths)
+		var paths
 
-		self.decoder = .init()
+		let encoder = FXCodexJSONCoding.encoder()
+		encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
 		self.encoder = encoder
 		self.fileManager = fileManager
+		self.paths = paths
+		self.lock = StorageLock(fileManager: fileManager, paths: paths)
 	}
 
 	public func prepare() throws {
-		try Folder(
-			path: self.paths.rootURL.path,
-			create: true
-		)
-		.createSubfolderIfNeeded(withName: self.paths.workspacesURL.lastPathComponent)
-
-		if !self.fileManager.fileExists(atPath: self.paths.configurationURL.path) {
-			try self.save(configuration: .init(
-				currentWorkspaceName: Workspace.primaryName,
-				workspaceIntegrations: [:]
-			))
-		}
+		try Migrator(fileManager: self.fileManager, paths: self.paths).migrateIfNeeded()
 	}
 
 	public func workspaces() throws -> [Workspace] {
 		try self.prepare()
-
-		let names: [String] = try self.fileManager.contentsOfDirectory(
-			at: self.paths.workspacesURL,
-			includingPropertiesForKeys: [.isDirectoryKey],
-			options: [.skipsHiddenFiles]
-		)
-		.filter { url in
-			(try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
-		}
-		.map(\.lastPathComponent)
-		.sorted()
-
-		let configuration: Configuration = try self.loadConfiguration()
-		let primaryWorkspace: Workspace = self.primaryWorkspace(
-			integrations: configuration.workspaceIntegrations[Workspace.primaryName] ?? [:]
-		)
-		let managedWorkspaces: [Workspace] = names.map { name in
-			self.managedWorkspace(
-				named: name,
-				integrations: configuration.workspaceIntegrations[name] ?? [:]
-			)
-		}
-		return [primaryWorkspace] + managedWorkspaces
+		let configuration = try self.loadConfiguration()
+		return try self.workspaceConfigurations()
+			.map { self.workspace(from: $0, configuration: configuration) }
+			.sorted {
+				if $0.kind != $1.kind { return $0.kind == .primary }
+				return $0.name < $1.name
+			}
 	}
 
 	public func workspace(named name: String?) throws -> Workspace {
 		try self.prepare()
-		let configuration: Configuration = try self.loadConfiguration()
-		let resolvedName: String = name ?? self.currentWorkspaceName(
-			configuration: configuration
-		)
-		let integrations: [String: CodableValue] = configuration.workspaceIntegrations[resolvedName] ?? [:]
-
-		if resolvedName == Workspace.primaryName {
-			return self.primaryWorkspace(integrations: integrations)
+		let configuration = try self.loadConfiguration()
+		if name == nil {
+			return try self.workspace(id: configuration.currentWorkspaceID, configuration: configuration)
 		}
 
-		let workspace: Workspace = self.managedWorkspace(
-			named: resolvedName,
-			integrations: integrations
-		)
-		guard let rootURL = workspace.rootURL else {
-			throw FXCodexError.workspaceNotFound(resolvedName)
+		guard let metadata = try self.workspaceConfigurations().first(where: { $0.name == name }) else {
+			throw FXCodexError.workspaceNotFound(name ?? "")
 		}
-		guard self.fileManager.fileExists(atPath: rootURL.path)
-		else { throw FXCodexError.workspaceNotFound(resolvedName) }
 
-		return workspace
+		return self.workspace(from: metadata, configuration: configuration)
+	}
+
+	public func workspace(id: WorkspaceID) throws -> Workspace {
+		try self.prepare()
+		return try self.workspace(id: id, configuration: self.loadConfiguration())
+	}
+
+	public func currentWorkspace() throws -> Workspace {
+		try self.workspace(named: nil)
 	}
 
 	public func currentWorkspaceName() throws -> String {
-		try self.prepare()
-		let configuration: Configuration = try self.loadConfiguration()
-		return self.currentWorkspaceName(configuration: configuration)
+		try self.currentWorkspace().name
+	}
+
+	public func currentWorkspaceID() throws -> WorkspaceID {
+		try self.currentWorkspace().id
 	}
 
 	@discardableResult
 	public func createWorkspace(named name: String) throws -> Workspace {
 		try self.validateWorkspaceName(name)
-		guard name != Workspace.primaryName
-		else { throw FXCodexError.primaryWorkspaceMutation }
-
+		guard name != Workspace.primaryName else { throw FXCodexError.primaryWorkspaceMutation }
 		try self.prepare()
-		let workspace: Workspace = self.managedWorkspace(
-			named: name,
-			integrations: [:]
-		)
-		guard let rootURL = workspace.rootURL else {
-			throw FXCodexError.workspaceNotFound(name)
+		guard try self.workspaceConfigurations().allSatisfy({ $0.name != name }) else {
+			throw FXCodexError.workspaceAlreadyExists(name)
 		}
-		guard !self.fileManager.fileExists(atPath: rootURL.path)
-		else { throw FXCodexError.workspaceAlreadyExists(name) }
 
-		let rootFolder: Folder = try .init(
-			path: rootURL.path,
-			create: true
+		let metadata = WorkspaceConfiguration(id: .generate(), name: name, kind: .managed)
+		let rootURL = self.workspaceRootURL(for: metadata.id)
+		try self.fileManager.createDirectory(
+			at: rootURL,
+			withIntermediateDirectories: false,
+			attributes: [.posixPermissions: 0o700]
 		)
-		try rootFolder.createSubfolder(named: "codex-home")
-		try rootFolder.createSubfolder(named: "user-data")
-		try self.fileManager.setAttributes(
-			[.posixPermissions: 0o700],
-			ofItemAtPath: rootURL.path
-		)
-
-		return workspace
+		do {
+			try self.fileManager.createDirectory(
+				at: rootURL.appending(path: "codex-home", directoryHint: .isDirectory),
+				withIntermediateDirectories: false,
+				attributes: [.posixPermissions: 0o700]
+			)
+			try self.fileManager.createDirectory(
+				at: rootURL.appending(path: "user-data", directoryHint: .isDirectory),
+				withIntermediateDirectories: false,
+				attributes: [.posixPermissions: 0o700]
+			)
+			try self.save(metadata: metadata)
+		} catch {
+			try? self.fileManager.removeItem(at: rootURL)
+			throw error
+		}
+		return self.workspace(from: metadata, configuration: try self.loadConfiguration())
 	}
 
 	@discardableResult
 	public func saveWorkspace(_ workspace: Workspace) throws -> Workspace {
-		_ = try self.workspace(named: workspace.name)
-		var configuration: Configuration = try self.loadConfiguration()
-
-		if workspace.integrations.isEmpty {
-			configuration.workspaceIntegrations.removeValue(forKey: workspace.name)
-		} else {
-			configuration.workspaceIntegrations[workspace.name] = workspace.integrations
+		let existing = try self.workspace(id: workspace.id)
+		guard existing.name == workspace.name, existing.kind == workspace.kind else {
+			throw FXCodexError.invalidStorage("workspace identity and metadata cannot be changed through save")
 		}
 
-		try self.save(configuration: configuration)
-		return workspace
+		try self.lock.withLock {
+			var configuration = try self.loadConfiguration()
+			let integrationIDs = Set(configuration.integrations.keys).union(workspace.integrations.keys)
+
+			for integrationID in integrationIDs {
+				var integration = Self.dictionary(configuration.integrations[integrationID]) ?? [:]
+				var workspaces = Self.dictionary(integration["workspaces"]) ?? [:]
+
+				if let attributes = workspace.integrations[integrationID] {
+					workspaces[workspace.id.rawValue] = attributes
+				} else {
+					workspaces.removeValue(forKey: workspace.id.rawValue)
+				}
+
+				if workspaces.isEmpty {
+					integration.removeValue(forKey: "workspaces")
+				} else {
+					integration["workspaces"] = .dictionary(workspaces)
+				}
+
+				if integration.isEmpty {
+					configuration.integrations.removeValue(forKey: integrationID)
+				} else {
+					configuration.integrations[integrationID] = .dictionary(integration)
+				}
+			}
+			try self.save(configuration: configuration)
+		}
+
+		return try self.workspace(id: workspace.id)
 	}
 
 	public func deleteWorkspace(named name: String?) throws {
-		let workspace: Workspace = try self.workspace(named: name)
-		guard workspace.kind == .managed
-		else { throw FXCodexError.primaryWorkspaceMutation }
-		let wasCurrent: Bool = try self.currentWorkspaceName() == workspace.name
-		guard let rootURL = workspace.rootURL else {
-			throw FXCodexError.workspaceNotFound(workspace.name)
-		}
+		try self.deleteWorkspace(id: self.workspace(named: name).id)
+	}
+
+	public func deleteWorkspace(id: WorkspaceID) throws {
+		let workspace = try self.workspace(id: id)
+		guard workspace.kind == .managed else { throw FXCodexError.primaryWorkspaceMutation }
+
+		guard let rootURL = workspace.rootURL
+		else { throw FXCodexError.workspaceNotFound(workspace.name) }
 
 		try self.validateManagedWorkspaceURL(rootURL)
-		try Folder(path: rootURL.path).delete()
+		try self.fileManager.removeItem(at: rootURL)
 
-		var configuration: Configuration = try self.loadConfiguration()
-		configuration.workspaceIntegrations.removeValue(forKey: workspace.name)
-		if wasCurrent {
-			configuration.currentWorkspaceName = Workspace.primaryName
+		try self.lock.withLock {
+			var configuration = try self.loadConfiguration()
+			configuration.removeWorkspaceAttributes(id: id)
+			if configuration.currentWorkspaceID == id {
+				configuration.currentWorkspaceID = try self.primaryWorkspaceConfiguration().id
+			}
+			try self.save(configuration: configuration)
 		}
-		try self.save(configuration: configuration)
 	}
 
 	@discardableResult
 	public func eraseWorkspace(named name: String?) throws -> Workspace {
-		let workspace: Workspace = try self.workspace(named: name)
-		guard workspace.kind == .managed
-		else { throw FXCodexError.primaryWorkspaceMutation }
+		try self.eraseWorkspace(id: self.workspace(named: name).id)
+	}
+
+	@discardableResult
+	public func eraseWorkspace(id: WorkspaceID) throws -> Workspace {
+		let workspace = try self.workspace(id: id)
+		guard workspace.kind == .managed else { throw FXCodexError.primaryWorkspaceMutation }
+
 		guard
 			let rootURL = workspace.rootURL,
 			let codexHomeURL = workspace.codexHomeURL,
@@ -212,231 +226,212 @@ public final class WorkspacesStorage: @unchecked Sendable {
 
 		try self.validateManagedWorkspaceURL(rootURL)
 		for directoryURL in [codexHomeURL, userDataURL] {
-			try self.eraseDirectory(
-				at: directoryURL,
-				inside: rootURL
-			)
+			try self.eraseDirectory(at: directoryURL, inside: rootURL)
 		}
-
-		var erasedWorkspace: Workspace = workspace
-		erasedWorkspace.integrations = [:]
-		return try self.saveWorkspace(erasedWorkspace)
+		return try self.workspace(id: id)
 	}
 
 	@discardableResult
-	public func renameWorkspace(
-		from oldName: String,
-		to newName: String
-	) throws -> Workspace {
-		let workspace: Workspace = try self.workspace(named: oldName)
-		guard workspace.kind == .managed
-		else { throw FXCodexError.primaryWorkspaceMutation }
+	public func renameWorkspace(from oldName: String, to newName: String) throws -> Workspace {
+		try self.renameWorkspace(id: self.workspace(named: oldName).id, to: newName)
+	}
 
+	@discardableResult
+	public func renameWorkspace(id: WorkspaceID, to newName: String) throws -> Workspace {
+		let workspace = try self.workspace(id: id)
+		guard workspace.kind == .managed else { throw FXCodexError.primaryWorkspaceMutation }
 		try self.validateWorkspaceName(newName)
-		guard newName != Workspace.primaryName
-		else { throw FXCodexError.primaryWorkspaceMutation }
+		guard newName != Workspace.primaryName else { throw FXCodexError.primaryWorkspaceMutation }
 
-		let destinationURL: URL = self.workspaceRootURL(forName: newName)
-		guard !self.fileManager.fileExists(atPath: destinationURL.path)
-		else { throw FXCodexError.workspaceAlreadyExists(newName) }
-		guard let rootURL = workspace.rootURL else {
-			throw FXCodexError.workspaceNotFound(workspace.name)
+		guard try self.workspaceConfigurations().allSatisfy({ $0.id == id || $0.name != newName }) else {
+			throw FXCodexError.workspaceAlreadyExists(newName)
 		}
-		let wasCurrent: Bool = try self.currentWorkspaceName() == workspace.name
 
-		try self.validateManagedWorkspaceURL(rootURL)
-		try self.fileManager.moveItem(
-			at: rootURL,
-			to: destinationURL
-		)
-
-		var configuration: Configuration = try self.loadConfiguration()
-		let integrations: [String: CodableValue] = configuration.workspaceIntegrations
-		.removeValue(forKey: workspace.name)
-		?? workspace.integrations
-		if integrations.isEmpty {
-			configuration.workspaceIntegrations.removeValue(forKey: newName)
-		} else {
-			configuration.workspaceIntegrations[newName] = integrations
-		}
-		if wasCurrent {
-			configuration.currentWorkspaceName = newName
-		}
-		try self.save(configuration: configuration)
-
-		return self.managedWorkspace(
-			named: newName,
-			integrations: integrations
-		)
+		var metadata = try self.loadWorkspaceConfiguration(id: id)
+		metadata.name = newName
+		try self.save(metadata: metadata)
+		return try self.workspace(id: id)
 	}
 
 	public func useWorkspace(named name: String) throws {
-		let workspace: Workspace = try self.workspace(named: name)
-		var configuration: Configuration = try self.loadConfiguration()
-		configuration.currentWorkspaceName = workspace.name
-		try self.save(configuration: configuration)
+		try self.useWorkspace(id: self.workspace(named: name).id)
 	}
 
+	public func useWorkspace(id: WorkspaceID) throws {
+		_ = try self.workspace(id: id)
+		try self.lock.withLock {
+			var configuration = try self.loadConfiguration()
+			configuration.currentWorkspaceID = id
+			try self.save(configuration: configuration)
+		}
+	}
 }
 
-extension WorkspacesStorage {
-	private struct Configuration: Codable {
-		var currentWorkspaceName: String
-		var workspaceIntegrations: [String: [String: CodableValue]]
+private extension WorkspacesStorage {
+	func loadConfiguration() throws -> StorageConfiguration {
+		try self.decoder.decode(StorageConfiguration.self, from: Data(contentsOf: self.paths.configurationURL))
+	}
 
-		init(
-			currentWorkspaceName: String,
-			workspaceIntegrations: [String: [String: CodableValue]]
-		) {
-			self.currentWorkspaceName = currentWorkspaceName
-			self.workspaceIntegrations = workspaceIntegrations
+	func save(configuration: StorageConfiguration) throws {
+		try self.encoder.encode(configuration).write(to: self.paths.configurationURL, options: [.atomic])
+	}
+
+	func loadWorkspaceConfiguration(id: WorkspaceID) throws -> WorkspaceConfiguration {
+		try self.decoder.decode(
+			WorkspaceConfiguration.self,
+			from: Data(contentsOf: self.workspaceMetadataURL(for: id))
+		)
+	}
+
+	func save(metadata: WorkspaceConfiguration) throws {
+		try self.encoder.encode(metadata).write(to: self.workspaceMetadataURL(for: metadata.id), options: [.atomic])
+	}
+
+	func workspaceConfigurations() throws -> [WorkspaceConfiguration] {
+		try self.fileManager.contentsOfDirectory(
+			at: self.paths.workspacesURL,
+			includingPropertiesForKeys: [.isDirectoryKey],
+			options: [.skipsHiddenFiles]
+		)
+		.filter { directory in
+			(try? directory.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+				&& WorkspaceID(directory.lastPathComponent) != nil
+		}
+		.map { directory in
+			guard let id = WorkspaceID(directory.lastPathComponent) else { preconditionFailure() }
+			let metadata = try self.loadWorkspaceConfiguration(id: id)
+			guard metadata.schemaVersion == .v2_0, metadata.id == id else {
+				throw FXCodexError.invalidStorage("workspace directory and metadata do not match")
+			}
+			return metadata
+		}
+	}
+
+	func primaryWorkspaceConfiguration() throws -> WorkspaceConfiguration {
+		guard let primary = try self.workspaceConfigurations().first(where: { $0.kind == .primary })
+		else {
+			throw FXCodexError.invalidStorage("primary workspace metadata is missing")
 		}
 
-		init(from decoder: any Decoder) throws {
-			let container = try decoder.container(keyedBy: CodingKeys.self)
-			self.currentWorkspaceName = try container.decode(
-				String.self,
-				forKey: .currentWorkspaceName
+		return primary
+	}
+
+	func workspace(id: WorkspaceID, configuration: StorageConfiguration) throws -> Workspace {
+		guard let metadata = try self.workspaceConfigurations().first(where: { $0.id == id }) else {
+			throw FXCodexError.workspaceNotFound(id.rawValue)
+		}
+
+		return self.workspace(from: metadata, configuration: configuration)
+	}
+
+	func workspace(from metadata: WorkspaceConfiguration, configuration: StorageConfiguration) -> Workspace {
+		let rootURL = self.workspaceRootURL(for: metadata.id)
+		let integrations = configuration.workspaceAttributes(id: metadata.id)
+		if metadata.kind == .primary {
+			return .init(
+				id: metadata.id,
+				name: metadata.name,
+				kind: metadata.kind,
+				rootURL: nil,
+				codexHomeURL: nil,
+				userDataURL: nil,
+				integrations: integrations
 			)
-			self.workspaceIntegrations = try container.decodeIfPresent(
-				[String: [String: CodableValue]].self,
-				forKey: .workspaceIntegrations
-			)
-			?? [:]
 		}
-
-		private enum CodingKeys: String, CodingKey {
-			case currentWorkspaceName = "current_workspace_name"
-			case workspaceIntegrations = "workspace_integrations"
-		}
-	}
-
-	private func loadConfiguration() throws -> Configuration {
-		let data: Data = try .init(contentsOf: self.paths.configurationURL)
-		return try self.decoder.decode(
-			Configuration.self,
-			from: data
-		)
-	}
-
-	private func save(configuration: Configuration) throws {
-		let data: Data = try self.encoder.encode(configuration)
-		try data.write(
-			to: self.paths.configurationURL,
-			options: [.atomic]
-		)
-	}
-
-	private func primaryWorkspace(
-		integrations: [String: CodableValue]
-	) -> Workspace {
-		.init(
-			name: Workspace.primaryName,
-			kind: .primary,
-			rootURL: nil,
-			codexHomeURL: nil,
-			userDataURL: nil,
-			integrations: integrations
-		)
-	}
-
-	private func managedWorkspace(
-		named name: String,
-		integrations: [String: CodableValue]
-	) -> Workspace {
-		let rootURL: URL = self.workspaceRootURL(forName: name)
 		return .init(
-			name: name,
-			kind: .managed,
+			id: metadata.id,
+			name: metadata.name,
+			kind: metadata.kind,
 			rootURL: rootURL,
-			codexHomeURL: rootURL.appending(
-				path: "codex-home",
-				directoryHint: .isDirectory
-			),
-			userDataURL: rootURL.appending(
-				path: "user-data",
-				directoryHint: .isDirectory
-			),
+			codexHomeURL: rootURL.appending(path: "codex-home", directoryHint: .isDirectory),
+			userDataURL: rootURL.appending(path: "user-data", directoryHint: .isDirectory),
 			integrations: integrations
 		)
 	}
 
-	private func currentWorkspaceName(
-		configuration: Configuration
-	) -> String {
-		if configuration.currentWorkspaceName == Workspace.primaryName {
-			return Workspace.primaryName
+	func workspaceRootURL(for id: WorkspaceID) -> URL {
+		self.paths.workspacesURL.appending(path: id.rawValue, directoryHint: .isDirectory).standardizedFileURL
+	}
+
+	func workspaceMetadataURL(for id: WorkspaceID) -> URL {
+		self.workspaceRootURL(for: id).appending(path: "workspace.json", directoryHint: .notDirectory)
+	}
+
+	func validateWorkspaceName(_ name: String) throws {
+		let pattern: Regex<Substring> = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/
+		guard name.wholeMatch(of: pattern) != nil else { throw FXCodexError.invalidWorkspaceName(name) }
+	}
+
+	func validateManagedWorkspaceURL(_ url: URL) throws {
+		let parentURL = url.deletingLastPathComponent().standardizedFileURL
+		guard parentURL == self.paths.workspacesURL.standardizedFileURL else {
+			throw CocoaError(.fileWriteNoPermission)
+		}
+	}
+
+	func eraseDirectory(at directoryURL: URL, inside rootURL: URL) throws {
+		let directoryURL = directoryURL.standardizedFileURL
+		guard directoryURL.deletingLastPathComponent() == rootURL.standardizedFileURL else {
+			throw CocoaError(.fileWriteNoPermission)
 		}
 
-		let workspaceURL: URL = self.workspaceRootURL(
-			forName: configuration.currentWorkspaceName
-		)
-		return self.fileManager.fileExists(atPath: workspaceURL.path)
-		? configuration.currentWorkspaceName
-		: Workspace.primaryName
-	}
-
-	private func workspaceRootURL(forName name: String) -> URL {
-		self.paths.workspacesURL.appending(
-			path: name,
-			directoryHint: .isDirectory
-		).standardizedFileURL
-	}
-
-	private func validateWorkspaceName(_ name: String) throws {
-		let pattern: Regex<Substring> = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/
-		guard name.wholeMatch(of: pattern) != nil
-		else { throw FXCodexError.invalidWorkspaceName(name) }
-	}
-
-	private func validateManagedWorkspaceURL(_ url: URL) throws {
-		let parentURL: URL = url.deletingLastPathComponent().standardizedFileURL
-		guard parentURL == self.paths.workspacesURL.standardizedFileURL
-		else { throw CocoaError(.fileWriteNoPermission) }
-	}
-
-	private func eraseDirectory(
-		at directoryURL: URL,
-		inside rootURL: URL
-	) throws {
-		let standardizedDirectoryURL: URL = directoryURL.standardizedFileURL
-		guard standardizedDirectoryURL.deletingLastPathComponent() == rootURL.standardizedFileURL
-		else { throw CocoaError(.fileWriteNoPermission) }
-
-		if self.fileManager.fileExists(atPath: standardizedDirectoryURL.path) {
-			let values: URLResourceValues = try standardizedDirectoryURL.resourceValues(
-				forKeys: [
-					.isDirectoryKey,
-					.isSymbolicLinkKey,
-				]
-			)
+		if self.fileManager.fileExists(atPath: directoryURL.path) {
+			let values = try directoryURL.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
 			if values.isDirectory != true || values.isSymbolicLink == true {
-				try self.fileManager.removeItem(at: standardizedDirectoryURL)
-				try self.fileManager.createDirectory(
-					at: standardizedDirectoryURL,
-					withIntermediateDirectories: false,
-					attributes: nil
-				)
+				try self.fileManager.removeItem(at: directoryURL)
+				try self.fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: false)
+
 			} else {
-				for itemURL in try self.fileManager.contentsOfDirectory(
-					at: standardizedDirectoryURL,
-					includingPropertiesForKeys: nil,
-					options: []
-				) {
+				for itemURL in try self.fileManager.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil) {
 					try self.fileManager.removeItem(at: itemURL)
 				}
 			}
+
 		} else {
-			try self.fileManager.createDirectory(
-				at: standardizedDirectoryURL,
-				withIntermediateDirectories: false,
-				attributes: nil
-			)
+			try self.fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: false)
 		}
 
-		try self.fileManager.setAttributes(
-			[.posixPermissions: 0o700],
-			ofItemAtPath: standardizedDirectoryURL.path
-		)
+		try self.fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directoryURL.path)
+	}
+
+	static func dictionary(_ value: CodableValue?) -> [String: CodableValue]? {
+		guard case let .dictionary(dictionary) = value else { return nil }
+		return dictionary
+	}
+}
+
+private extension StorageConfiguration {
+	func workspaceAttributes(id: WorkspaceID) -> [String: CodableValue] {
+		self.integrations.reduce(into: [:]) { result, item in
+
+			guard
+				case let .dictionary(integration) = item.value,
+				case let .dictionary(workspaces) = integration["workspaces"],
+				let attributes = workspaces[id.rawValue]
+			else { return }
+
+			result[item.key] = attributes
+		}
+	}
+
+	mutating func removeWorkspaceAttributes(id: WorkspaceID) {
+		for integrationID in self.integrations.keys.sorted() {
+			guard case var .dictionary(integration) = self.integrations[integrationID] else { continue }
+			if case var .dictionary(workspaces) = integration["workspaces"] {
+				workspaces.removeValue(forKey: id.rawValue)
+
+				if workspaces.isEmpty {
+					integration.removeValue(forKey: "workspaces")
+				} else {
+					integration["workspaces"] = .dictionary(workspaces)
+				}
+			}
+
+			if integration.isEmpty {
+				self.integrations.removeValue(forKey: integrationID)
+			} else {
+				self.integrations[integrationID] = .dictionary(integration)
+			}
+		}
 	}
 }

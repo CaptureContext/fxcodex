@@ -2,7 +2,8 @@ import ArgumentParser
 import Dependencies
 import FXCodexClient
 import Testing
-@testable import FXCodexCLI
+@testable
+import FXCodexCLI
 
 @Suite("Preferences command")
 struct PreferencesCommandTests {
@@ -32,6 +33,10 @@ struct PreferencesCommandTests {
 		#expect(enabled.json == true)
 		#expect(disabled.preference == .autoRename)
 		#expect(disabled.value?.value == false)
+
+		let interactive: AppCommand.PreferencesCommand.Set = try .parse([])
+		#expect(interactive.preference == nil)
+		#expect(interactive.value == nil)
 	}
 
 	@Test("Auto-update parses every supported policy")
@@ -72,6 +77,8 @@ struct PreferencesCommandTests {
 	func executionPreparation() async throws {
 		let requestCount: LockIsolated<Int> = .init(0)
 		var client: FXCodexClient = .init()
+		client.storageMigrationPlan = { nil }
+		client.prepareStorage = {}
 		client.applyAutomaticPreferences = { _, _, _ in
 			requestCount.withValue { $0 += 1 }
 			return []

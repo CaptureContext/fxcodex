@@ -7,6 +7,9 @@ public enum FXCodexError: Error, Equatable, LocalizedError, Sendable {
 	case codexExecutableNotFound
 	case homebrewNotFound
 	case homebrewManagedUpdate
+	case integrationAttributeNotFound(String)
+	case invalidAttributePath(String)
+	case invalidStorage(String)
 	case invalidWorkspaceName(String)
 	case primaryWorkspaceMutation
 	case raycastBetaUnsupportedPlatform
@@ -18,71 +21,37 @@ public enum FXCodexError: Error, Equatable, LocalizedError, Sendable {
 	case updateChecksumMismatch
 	case updateExecutableInvalid(URL)
 	case updateRequestFailed(Int)
+	case unsupportedSchemaVersion(SchemaVersion)
 	case workspaceAlreadyExists(String)
 	case workspaceIsRunning(String)
 	case workspaceNotFound(String)
 
 	public var code: String {
 		switch self {
-		case .applicationNotFound:
-			"application_not_found"
-
-		case .applicationBundleMismatch:
-			"application_bundle_mismatch"
-
-		case .ambiguousApplicationInstances:
-			"ambiguous_application_instances"
-
-		case .codexExecutableNotFound:
-			"codex_executable_not_found"
-
-		case .homebrewNotFound:
-			"homebrew_not_found"
-
-		case .homebrewManagedUpdate:
-			"homebrew_managed_update"
-
-		case .invalidWorkspaceName:
-			"invalid_workspace_name"
-
-		case .primaryWorkspaceMutation:
-			"primary_workspace_mutation"
-
-		case .raycastBetaUnsupportedPlatform:
-			"raycast_beta_unsupported_platform"
-
-		case .raycastScriptCommandDirectoryMissing:
-			"raycast_script_command_directory_missing"
-
-		case .supportDirectoryInvalid:
-			"support_directory_invalid"
-
-		case .updateArchitectureUnsupported:
-			"update_architecture_unsupported"
-
-		case .updateAssetMissing:
-			"update_asset_missing"
-
-		case .updateChecksumInvalid:
-			"update_checksum_invalid"
-
-		case .updateChecksumMismatch:
-			"update_checksum_mismatch"
-
-		case .updateExecutableInvalid:
-			"update_executable_invalid"
-
-		case .updateRequestFailed:
-			"update_request_failed"
-
-		case .workspaceAlreadyExists:
-			"workspace_already_exists"
-
-		case .workspaceIsRunning:
-			"workspace_is_running"
-
-		case .workspaceNotFound:
-			"workspace_not_found"
+		case .applicationNotFound: "application_not_found"
+		case .applicationBundleMismatch: "application_bundle_mismatch"
+		case .ambiguousApplicationInstances: "ambiguous_application_instances"
+		case .codexExecutableNotFound: "codex_executable_not_found"
+		case .homebrewNotFound: "homebrew_not_found"
+		case .homebrewManagedUpdate: "homebrew_managed_update"
+		case .integrationAttributeNotFound: "integration_attribute_not_found"
+		case .invalidAttributePath: "invalid_attribute_path"
+		case .invalidStorage: "invalid_storage"
+		case .invalidWorkspaceName: "invalid_workspace_name"
+		case .primaryWorkspaceMutation: "primary_workspace_mutation"
+		case .raycastBetaUnsupportedPlatform: "raycast_beta_unsupported_platform"
+		case .raycastScriptCommandDirectoryMissing: "raycast_script_command_directory_missing"
+		case .supportDirectoryInvalid: "support_directory_invalid"
+		case .updateArchitectureUnsupported: "update_architecture_unsupported"
+		case .updateAssetMissing: "update_asset_missing"
+		case .updateChecksumInvalid: "update_checksum_invalid"
+		case .updateChecksumMismatch: "update_checksum_mismatch"
+		case .updateExecutableInvalid: "update_executable_invalid"
+		case .updateRequestFailed: "update_request_failed"
+		case .unsupportedSchemaVersion: "unsupported_schema_version"
+		case .workspaceAlreadyExists: "workspace_already_exists"
+		case .workspaceIsRunning: "workspace_is_running"
+		case .workspaceNotFound: "workspace_not_found"
 		}
 	}
 
@@ -105,6 +74,15 @@ public enum FXCodexError: Error, Equatable, LocalizedError, Sendable {
 
 		case .homebrewManagedUpdate:
 			"This fxcodex installation is managed by Homebrew. Run 'brew upgrade fxcodex' instead."
+
+		case let .integrationAttributeNotFound(path):
+			"No integration attribute exists at '\(path)'."
+
+		case let .invalidAttributePath(path):
+			"Invalid integration attribute path '\(path)'."
+
+		case let .invalidStorage(message):
+			"Invalid fxcodex storage: \(message)"
 
 		case let .invalidWorkspaceName(name):
 			"Invalid workspace name '\(name)'. Use lowercase letters, numbers, and hyphens."
@@ -138,6 +116,9 @@ public enum FXCodexError: Error, Equatable, LocalizedError, Sendable {
 
 		case let .updateRequestFailed(statusCode):
 			"The GitHub Releases request failed with HTTP status \(statusCode)."
+
+		case let .unsupportedSchemaVersion(version):
+			"Storage schema \(version) is unsupported. This fxcodex build supports schema 2.0."
 
 		case let .workspaceAlreadyExists(name):
 			"Workspace '\(name)' already exists."

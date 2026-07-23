@@ -1,6 +1,7 @@
 import ArgumentParser
 import Testing
-@testable import FXCodexCLI
+@testable
+import FXCodexCLI
 
 @Suite("Open command")
 struct OpenCommandTests {
@@ -10,8 +11,8 @@ struct OpenCommandTests {
 		#expect(command.workspaceName == "work")
 	}
 
-	@Test("Defaults to the current workspace")
-	func currentWorkspace() async throws {
+	@Test("Accepts an omitted workspace for interactive selection")
+	func omittedWorkspace() async throws {
 		let command: AppCommand.OpenCommand = try .parse([])
 		#expect(command.workspaceName == nil)
 	}

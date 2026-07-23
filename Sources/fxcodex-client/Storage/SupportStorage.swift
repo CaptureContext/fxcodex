@@ -33,10 +33,11 @@ final class SupportStorage: @unchecked Sendable {
 
 	func removeAll() throws {
 		let rootURL: URL = self.paths.rootURL.standardizedFileURL
+
 		guard rootURL.pathComponents.count > 2
 		else { throw FXCodexError.supportDirectoryInvalid(rootURL) }
-		guard self.fileManager.fileExists(atPath: rootURL.path)
-		else { return }
+
+		guard self.fileManager.fileExists(atPath: rootURL.path) else { return }
 		try self.fileManager.removeItem(at: rootURL)
 	}
 }

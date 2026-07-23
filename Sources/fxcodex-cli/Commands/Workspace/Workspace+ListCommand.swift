@@ -18,8 +18,11 @@ extension AppCommand.WorkspaceCommand {
 		internal init() {}
 
 		internal func run() async throws {
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
 			let status: FXCodexStatus = try await client.status()
+
 			if machineOutputRequested(self.json) {
 				try printMachineResponse(status.workspaces)
 				return
@@ -32,6 +35,7 @@ extension AppCommand.WorkspaceCommand {
 				let processDescription: String = item.processID
 					.map { "running · pid \($0)" }
 				?? "stopped"
+
 				await reporter.info(
 					"\(currentMarker) \(item.workspace.name)\t\(processDescription)"
 				)

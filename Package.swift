@@ -31,6 +31,10 @@ let package = Package(
 			.upToNextMajor(from: "1.9.0")
 		),
 		.package(
+			url: "https://github.com/pointfreeco/swift-parsing.git",
+			.upToNextMajor(from: "0.15.0")
+		),
+		.package(
 			url: "https://github.com/onmyway133/Promptberry.git",
 			.upToNextMajor(from: "1.0.0")
 		),
@@ -80,6 +84,10 @@ let package = Package(
 				.product(
 					name: "CasePaths",
 					package: "swift-case-paths"
+				),
+				.product(
+					name: "Parsing",
+					package: "swift-parsing"
 				),
 			],
 			path: "Sources/fxcodex-client"

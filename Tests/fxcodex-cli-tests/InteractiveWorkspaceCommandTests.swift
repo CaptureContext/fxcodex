@@ -3,7 +3,8 @@ import Dependencies
 import Foundation
 import FXCodexClient
 import Testing
-@testable import FXCodexCLI
+@testable
+import FXCodexCLI
 
 @Suite("Interactive workspace commands")
 struct InteractiveWorkspaceCommandTests {
@@ -44,12 +45,12 @@ struct InteractiveWorkspaceCommandTests {
 		let personal: Workspace = Self.workspace(named: "personal", kind: .managed)
 		let work: Workspace = Self.workspace(named: "work", kind: .managed)
 		let options: LockIsolated<[TerminalPromptOption]> = .init([])
-		let openedWorkspaceName: LockIsolated<String?> = .init(nil)
+		let openedWorkspaceID: LockIsolated<WorkspaceID?> = .init(nil)
 		var client: FXCodexClient = .init()
 		client.workspaces = { [primary, personal, work] }
 		client.currentWorkspace = { work }
-		client.openWorkspace = {
-			openedWorkspaceName.setValue($0)
+		client.openWorkspaceByID = {
+			openedWorkspaceID.setValue($0)
 			return 42
 		}
 
@@ -58,7 +59,7 @@ struct InteractiveWorkspaceCommandTests {
 			$0._fxcodexTerminalPrompts = .init(
 				select: { _, promptOptions in
 					options.setValue(promptOptions)
-					return work.name
+					return work.id.rawValue
 				},
 				multiselect: { _, _ in nil },
 				confirm: { _ in nil }
@@ -68,9 +69,9 @@ struct InteractiveWorkspaceCommandTests {
 			try await command.run()
 		}
 
-		#expect(options.value.map(\.value) == [work.name, Workspace.primaryName, personal.name])
+		#expect(options.value.map(\.value) == [work.id.rawValue, primary.id.rawValue, personal.id.rawValue])
 		#expect(options.value.first?.hint == "current")
-		#expect(openedWorkspaceName.value == work.name)
+		#expect(openedWorkspaceID.value == work.id)
 	}
 
 	@Test("Delete excludes primary and forwards every selected workspace")

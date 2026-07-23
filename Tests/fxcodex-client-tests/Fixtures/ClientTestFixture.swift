@@ -1,5 +1,7 @@
 import Foundation
-@_spi(Internals) @testable import FXCodexClient
+@_spi(Internals)
+@testable
+import FXCodexClient
 
 final class ClientTestFixture {
 	let applicationURL: URL
@@ -149,8 +151,7 @@ actor CodexApplicationSpy {
 			rename: { try await self.rename(to: $0) },
 			open: { await self.open($0) },
 			runningProcessID: { await self.runningProcessID(for: $0) },
-			removeRecord: { await self.removeRecord(for: $0) },
-			renameRecord: { await self.renameRecord(from: $0, to: $1) }
+			removeRecord: { await self.removeRecord(for: $0.name) }
 		)
 	}
 
@@ -209,16 +210,6 @@ actor CodexApplicationSpy {
 		self.removedWorkspaceNames.append(name)
 	}
 
-	private func renameRecord(
-		from oldName: String,
-		to newName: String
-	) {
-		self.processIDs[newName] = self.processIDs.removeValue(forKey: oldName)
-		self.renamedWorkspaces.append(.init(
-			oldName: oldName,
-			newName: newName
-		))
-	}
 }
 
 extension Integrations.Raycast {
@@ -238,7 +229,7 @@ extension Integrations.Raycast {
 					environment: [:]
 				))
 			},
-			installScriptCommands: { directoryURL, _, _, _ in
+			installScriptCommands: { directoryURL, _, _ in
 				.init(
 					directoryURL: directoryURL,
 					managedCommandCount: 0

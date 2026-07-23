@@ -1,8 +1,10 @@
 import ArgumentParser
+import Dependencies
 import Foundation
 import FXCodexClient
 import Testing
-@testable import FXCodexCLI
+@testable
+import FXCodexCLI
 
 @Suite("Machine response")
 struct MachineResponseTests {
@@ -93,6 +95,18 @@ struct MachineResponseTests {
 		))
 	}
 
+	@Test("Commands read environment through the injected client")
+	func injectedEnvironment() {
+		withDependencies {
+			$0._fxcodexEnvironment = .init(values: {
+				["FXCODEX_JSON": "1"]
+			})
+		} operation: {
+			#expect(globalMachineOutputRequested(arguments: ["status"]))
+			#expect(!globalMachineOutputRequested(arguments: ["--no-json", "status"]))
+		}
+	}
+
 	@Test("Warnings use a structured machine response")
 	func warningResponse() async throws {
 		let data: Data = try encodedJSON(MachineWarningResponse(
@@ -137,6 +151,9 @@ struct MachineResponseTests {
 			(.codexExecutableNotFound, "codex_executable_not_found"),
 			(.homebrewNotFound, "homebrew_not_found"),
 			(.homebrewManagedUpdate, "homebrew_managed_update"),
+			(.integrationAttributeNotFound("raycast.icon"), "integration_attribute_not_found"),
+			(.invalidAttributePath("icons.(unknown)"), "invalid_attribute_path"),
+			(.invalidStorage("missing metadata"), "invalid_storage"),
 			(.invalidWorkspaceName("Work"), "invalid_workspace_name"),
 			(.primaryWorkspaceMutation, "primary_workspace_mutation"),
 			(.raycastBetaUnsupportedPlatform, "raycast_beta_unsupported_platform"),
@@ -148,6 +165,7 @@ struct MachineResponseTests {
 			(.updateChecksumMismatch, "update_checksum_mismatch"),
 			(.updateExecutableInvalid(URL(fileURLWithPath: "/tmp/fxcodex")), "update_executable_invalid"),
 			(.updateRequestFailed(503), "update_request_failed"),
+			(.unsupportedSchemaVersion(.init(major: 3, minor: 0)), "unsupported_schema_version"),
 			(.workspaceAlreadyExists("work"), "workspace_already_exists"),
 			(.workspaceIsRunning("work"), "workspace_is_running"),
 			(.workspaceNotFound("work"), "workspace_not_found"),
@@ -175,6 +193,23 @@ struct MachineResponseTests {
 			"work",
 			"--json",
 		])
+		let openByID: AppCommand.OpenCommand = try .parse([
+			"--workspace-id",
+			"00000000-0000-0000-0000-000000000001",
+			"--json",
+		])
+		let getAttribute: AppCommand.IntegrationsCommand.Attributes.Get = try .parse([
+			"raycast",
+			"--path",
+			"workspaces.(keys)",
+			"--json",
+		])
+		let installRaycast: AppCommand.IntegrationsCommand.Raycast.Install = try .parse([
+			"script-command",
+			"--directory",
+			"/tmp/raycast",
+			"--json",
+		])
 		let raycast: AppCommand.IntegrationsCommand.Raycast.Status = try .parse(["--json"])
 		let version: VersionCommand = try .parse(["--json"])
 
@@ -183,6 +218,13 @@ struct MachineResponseTests {
 		#expect(rename.json == true)
 		#expect(use.json == true)
 		#expect(open.json == true)
+		#expect(openByID.workspaceID == "00000000-0000-0000-0000-000000000001")
+		#expect(openByID.json == true)
+		#expect(getAttribute.integration == "raycast")
+		#expect(getAttribute.path == "workspaces.(keys)")
+		#expect(getAttribute.json == true)
+		#expect(installRaycast.component == .scriptCommand)
+		#expect(installRaycast.json == true)
 		#expect(raycast.json == true)
 		#expect(version.json == true)
 	}

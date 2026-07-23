@@ -1,7 +1,9 @@
 import Dependencies
 import Foundation
 import Testing
-@_spi(Internals) @testable import FXCodexClient
+@_spi(Internals)
+@testable
+import FXCodexClient
 
 @Suite("Application instances storage")
 struct AppInstancesStorageTests {
@@ -17,21 +19,24 @@ struct AppInstancesStorageTests {
 			$0._fxcodexPaths = .init(rootURL: fixture.rootURL)
 		} operation: {
 			let storage: AppInstancesStorage = .init(fileManager: .default)
+			let workspaceID = WorkspaceID.generate()
 			try storage.setRecord(
 				.init(
 					bundleURL: oldURL,
 					launchDate: Date(timeIntervalSince1970: 1_000),
 					processID: 42
 				),
-				forWorkspaceNamed: "work"
+				forWorkspaceID: workspaceID
 			)
 			let data: Data = try .init(contentsOf: fixture.rootURL.appending(
-				path: "instances.json"
+				path: "runtime.json"
 			))
 			let object: [String: Any] = try #require(
 				JSONSerialization.jsonObject(with: data) as? [String: Any]
 			)
-			let record: [String: Any] = try #require(object["work"] as? [String: Any])
+			#expect(object["schema_version"] as? String == "2.0")
+			let instances = try #require(object["instances"] as? [String: Any])
+			let record: [String: Any] = try #require(instances[workspaceID.rawValue] as? [String: Any])
 			#expect(Set(record.keys) == ["bundle_url", "launch_date", "process_id"])
 			try storage.replaceBundleURL(
 				from: oldURL,
@@ -39,7 +44,7 @@ struct AppInstancesStorageTests {
 			)
 
 			#expect(
-				try storage.record(forWorkspaceNamed: "work")?.bundleURL
+				try storage.record(forWorkspaceID: workspaceID)?.bundleURL
 				== newURL.standardizedFileURL
 			)
 		}

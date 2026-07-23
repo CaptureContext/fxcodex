@@ -1,7 +1,9 @@
 import Dependencies
 import Foundation
 import Testing
-@_spi(Internals) @testable import FXCodexClient
+@_spi(Internals)
+@testable
+import FXCodexClient
 
 @Suite("Codex application client")
 struct CodexApplicationClientTests {
@@ -17,7 +19,9 @@ struct CodexApplicationClientTests {
 			$0._fxcodexPaths = .init(rootURL: fixture.rootURL)
 			$0._fxcodexRaycast = .fixture
 		} operation: {
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
 			let workspace: Workspace = try await client.createWorkspace("work")
 			#expect(try await client.openWorkspace(workspace.name) == 7_007)
 		}
@@ -43,7 +47,9 @@ struct CodexApplicationClientTests {
 			$0._fxcodexPaths = .init(rootURL: fixture.rootURL)
 			$0._fxcodexRaycast = .fixture
 		} operation: {
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
 			_ = try await client.createWorkspace("work")
 			let status: FXCodexStatus = try await client.status()
 

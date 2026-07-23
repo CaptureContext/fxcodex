@@ -14,6 +14,7 @@ extension RaycastScriptCommandIcon {
 	private static func decode(_ value: String) -> Data {
 		guard let data = Data(base64Encoded: value)
 		else { preconditionFailure("Invalid embedded Raycast Script Command icon.") }
+
 		return data
 	}
 }

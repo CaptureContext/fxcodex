@@ -1,5 +1,4 @@
 import AppKit
-import CasePaths
 import Dependencies
 import Foundation
 
@@ -7,26 +6,20 @@ actor RaycastIntegration {
 	@Dependency(\._fxcodexWorkspaces)
 	private var workspaces
 
+	@Dependency(\._fxcodexIntegrationAttributes)
+	private var attributes
+
 	init() {}
 
-	func applicationStatus(
-		for edition: RaycastEdition
-	) async -> RaycastApplicationStatus {
-		let applicationURL: URL? = await Self.applicationURL(for: edition)
-		let version: String? = applicationURL
-		.flatMap(Bundle.init(url:))?
-		.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-
-		return .init(
-			edition: edition,
-			applicationURL: applicationURL,
-			version: version
-		)
+	func applicationStatus(for edition: RaycastEdition) async -> RaycastApplicationStatus {
+		let applicationURL = await Self.applicationURL(for: edition)
+		let version = applicationURL
+			.flatMap(Bundle.init(url:))?
+			.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+		return .init(edition: edition, applicationURL: applicationURL, version: version)
 	}
 
-	func applicationInstallation(
-		for edition: RaycastEdition
-	) async throws -> RaycastApplicationInstallation {
+	func applicationInstallation(for edition: RaycastEdition) async throws -> RaycastApplicationInstallation {
 		if let applicationURL = await Self.applicationURL(for: edition) {
 			return .alreadyInstalled(applicationURL)
 		}
@@ -41,296 +34,265 @@ actor RaycastIntegration {
 
 		case .beta:
 			#if arch(arm64)
-			guard ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26
-			else { throw FXCodexError.raycastBetaUnsupportedPlatform }
+			guard ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26 else {
+				throw FXCodexError.raycastBetaUnsupportedPlatform
+			}
+			guard let url = URL(string: "https://www.raycast.com/new") else {
+				throw CocoaError(.fileNoSuchFile)
+			}
+
+			return .externalDownload(url)
 			#else
 			throw FXCodexError.raycastBetaUnsupportedPlatform
 			#endif
-
-			guard let url = URL(string: "https://www.raycast.com/new")
-			else { throw CocoaError(.fileNoSuchFile) }
-			return .externalDownload(url)
 		}
 	}
 
 	func installScriptCommands(
 		at directoryURL: URL,
 		fxcodexExecutableURL: URL,
-		includeCurrentWorkspace: Bool,
-		includeAllWorkspaces: Bool
+		currentWorkspaceOnly: Bool
 	) throws -> RaycastScriptCommandStatus {
-		var selectedWorkspaces: [String: Workspace] = [:]
-
-		if includeAllWorkspaces {
-			for workspace in try self.workspaces.list() {
-				selectedWorkspaces[workspace.name] = workspace
-			}
-		}
-
-		if includeCurrentWorkspace {
-			let workspace: Workspace = try self.workspaces.currentWorkspace()
-			selectedWorkspaces[workspace.name] = workspace
-		}
-
-		for workspace in selectedWorkspaces.values.sorted(by: { $0.name < $1.name }) {
-			_ = try self.installScriptCommand(
-				for: workspace,
-				at: directoryURL,
-				fxcodexExecutableURL: fxcodexExecutableURL
-			)
-		}
-
-		try self.setAutomaticManagement(
-			includeAllWorkspaces
-			? .init(
-				directoryURL: directoryURL,
-				fxcodexExecutableURL: fxcodexExecutableURL
-			)
+		let workspaceIDs: Set<WorkspaceID>? = currentWorkspaceOnly
+			? [try self.workspaces.currentWorkspace().id]
 			: nil
+		let configuration = RaycastScriptCommandConfiguration(
+			directoryURL: directoryURL,
+			fxcodexExecutableURL: fxcodexExecutableURL,
+			workspaceIDs: workspaceIDs
 		)
+
+		try self.saveConfiguration(configuration)
+		try self.reconcile(configuration)
+
 		return try self.scriptCommandStatus()
 	}
 
-	func syncScriptCommands(
-		fxcodexExecutableURL: URL
-	) throws -> RaycastScriptCommandStatus {
-		let configuredWorkspaces: [Workspace] = try self.workspaces.list().filter { workspace in
-			workspace.raycastScriptCommandConfiguration != nil
-		}
-		guard !configuredWorkspaces.isEmpty
-		else { throw FXCodexError.raycastScriptCommandDirectoryMissing }
-
-		for workspace in configuredWorkspaces {
-			guard let configuration = workspace.raycastScriptCommandConfiguration
-			else { continue }
-			_ = try self.installScriptCommand(
-				for: workspace,
-				at: configuration.directoryURL,
-				fxcodexExecutableURL: fxcodexExecutableURL
-			)
+	func syncScriptCommands(fxcodexExecutableURL: URL) throws -> RaycastScriptCommandStatus {
+		guard var configuration = try self.configuration() else {
+			throw FXCodexError.raycastScriptCommandDirectoryMissing
 		}
 
-		let primaryWorkspace: Workspace = try self.workspaces.findWorkspace(named: Workspace.primaryName)
-		if let automaticManagement = primaryWorkspace.raycastAutomaticManagement {
-			try self.setAutomaticManagement(.init(
-				directoryURL: automaticManagement.directoryURL,
-				fxcodexExecutableURL: fxcodexExecutableURL
-			))
-		}
+		configuration.fxcodexExecutableURL = fxcodexExecutableURL.standardizedFileURL
+		try self.saveConfiguration(configuration)
+		try self.reconcile(configuration)
 
 		return try self.scriptCommandStatus()
 	}
 
 	func uninstallScriptCommands() throws -> RaycastScriptCommandStatus {
-		for workspace in try self.workspaces.list() {
-			guard workspace.raycastScriptCommandConfiguration != nil
-			else { continue }
-			try self.removeScriptCommand(for: workspace)
-
-			var updatedWorkspace: Workspace = workspace
-			updatedWorkspace.raycastScriptCommandConfiguration = nil
-			_ = try self.workspaces.save(updatedWorkspace)
+		if let configuration = try self.configuration() {
+			try self.removeManagedCommands(in: configuration.generatedDirectoryURL)
 		}
 
-		try self.setAutomaticManagement(nil)
-		return .init(
-			directoryURL: nil,
-			managedCommandCount: 0
-		)
+		do {
+			try self.attributes.remove("raycast", try .init("script_commands"))
+		} catch FXCodexError.integrationAttributeNotFound {
+			// The generated files may still exist after a manually edited configuration.
+		}
+
+		return .init(directoryURL: nil, managedCommandCount: 0)
 	}
 
 	func scriptCommandStatus() throws -> RaycastScriptCommandStatus {
-		let configurations: [RaycastScriptCommandConfiguration] = try self.workspaces.list()
-		.compactMap(\.raycastScriptCommandConfiguration)
-		let directoryURLs: Set<URL> = .init(configurations.map(\.directoryURL))
-		let managedCommandCount: Int = try self.workspaces.list().reduce(into: 0) { count, workspace in
-			guard
-				let configuration = workspace.raycastScriptCommandConfiguration,
-				try self.isManagedScriptCommand(
-					at: self.scriptCommandURL(
-						for: workspace,
-						in: configuration.directoryURL
-					)
-				)
-			else { return }
-			count += 1
+		guard let configuration = try self.configuration() else {
+			return .init(directoryURL: nil, managedCommandCount: 0)
 		}
 
-		return .init(
-			directoryURL: directoryURLs.count == 1 ? directoryURLs.first : nil,
-			managedCommandCount: managedCommandCount
-		)
+		let count = try self.workspaces.list()
+			.filter(configuration.includes)
+			.reduce(into: 0) { count, workspace in
+			let scriptCommandURL = self.scriptCommandURL(
+				for: workspace,
+				configuration: configuration
+			)
+			if try self.isManagedScriptCommand(at: scriptCommandURL) {
+				count += 1
+			}
+		}
+
+		return .init(directoryURL: configuration.directoryURL, managedCommandCount: count)
 	}
 
 	func workspaceCreated(_ workspace: Workspace) throws -> Workspace {
-		let primaryWorkspace: Workspace = try self.workspaces.findWorkspace(named: Workspace.primaryName)
-		guard let automaticManagement = primaryWorkspace.raycastAutomaticManagement
-		else { return workspace }
-
-		return try self.installScriptCommand(
-			for: workspace,
-			at: automaticManagement.directoryURL,
-			fxcodexExecutableURL: automaticManagement.fxcodexExecutableURL
-		)
+		try self.reconcileIfConfigured()
+		return workspace
 	}
 
 	func workspaceDeleted(_ workspace: Workspace) throws {
-		try self.removeScriptCommand(for: workspace)
+		guard let configuration = try self.configuration() else { return }
+		try self.removeManagedScriptCommand(at: self.scriptCommandURL(for: workspace, configuration: configuration))
 	}
 
 	func workspaceErased(_ workspace: Workspace) throws {
-		try self.removeScriptCommand(for: workspace)
+		try self.reconcileIfConfigured()
 	}
 
-	func workspaceRenamed(
-		from oldWorkspace: Workspace,
-		to newWorkspace: Workspace
-	) throws -> Workspace {
-		guard let configuration = oldWorkspace.raycastScriptCommandConfiguration
-		else { return newWorkspace }
-
-		try self.removeScriptCommand(for: oldWorkspace)
-		return try self.installScriptCommand(
-			for: newWorkspace,
-			at: configuration.directoryURL,
-			fxcodexExecutableURL: configuration.fxcodexExecutableURL
-		)
+	func workspaceRenamed(from oldWorkspace: Workspace, to newWorkspace: Workspace) throws -> Workspace {
+		try self.reconcileIfConfigured()
+		return newWorkspace
 	}
 }
 
-extension RaycastIntegration {
-	private static var scriptCommandMarker: String {
-		"# fxcodex-managed-script-command"
-	}
+private extension RaycastIntegration {
+	static var scriptCommandMarker: String { "# fxcodex-managed-script-command" }
 
 	@MainActor
-	private static func applicationURL(for edition: RaycastEdition) -> URL? {
+	static func applicationURL(for edition: RaycastEdition) -> URL? {
 		let bundleIdentifier: String
 		let knownURL: URL
-
 		switch edition {
 		case .stable:
 			bundleIdentifier = "com.raycast.macos"
 			knownURL = URL(fileURLWithPath: "/Applications/Raycast.app")
-
 		case .beta:
 			bundleIdentifier = "com.raycast-x.macos"
 			knownURL = URL(fileURLWithPath: "/Applications/Raycast Beta.app")
 		}
 
-		let discoveredURLs: [URL] = NSWorkspace.shared.urlsForApplications(
-			withBundleIdentifier: bundleIdentifier
-		)
+		let discoveredURLs = NSWorkspace.shared.urlsForApplications(withBundleIdentifier: bundleIdentifier)
 		return (discoveredURLs + [knownURL]).first { url in
 			FileManager.default.fileExists(atPath: url.path)
-			&& Bundle(url: url)?.bundleIdentifier == bundleIdentifier
+				&& Bundle(url: url)?.bundleIdentifier == bundleIdentifier
 		}
 	}
 
-	private func installScriptCommand(
-		for workspace: Workspace,
-		at directoryURL: URL,
-		fxcodexExecutableURL: URL
-	) throws -> Workspace {
-		if let previousConfiguration = workspace.raycastScriptCommandConfiguration {
-			let previousURL: URL = self.scriptCommandURL(
-				for: workspace,
-				in: previousConfiguration.directoryURL
-			)
-			let newURL: URL = self.scriptCommandURL(
-				for: workspace,
-				in: directoryURL
-			)
-			if previousURL != newURL {
-				try self.removeManagedScriptCommand(at: previousURL)
+	func configuration() throws -> RaycastScriptCommandConfiguration? {
+		guard
+			let value = try? self.attributes.get("raycast", .init("script_commands")),
+			case let .dictionary(dictionary) = value,
+			case let .string(path) = dictionary["path"],
+			case let .string(executablePath) = dictionary["executable_path"]
+		else { return nil }
+		let workspaceIDs: Set<WorkspaceID>?
+
+		if let value = dictionary["workspace_ids"] {
+			guard case let .array(rawWorkspaceIDs) = value else { return nil }
+
+			let parsedWorkspaceIDs = rawWorkspaceIDs.compactMap { value -> WorkspaceID? in
+				guard case let .string(rawWorkspaceID) = value else { return nil }
+				return WorkspaceID(rawWorkspaceID)
 			}
+
+			guard parsedWorkspaceIDs.count == rawWorkspaceIDs.count else { return nil }
+			workspaceIDs = Set(parsedWorkspaceIDs)
+
+		} else {
+			workspaceIDs = nil
 		}
 
-		try FileManager.default.createDirectory(
-			at: directoryURL,
-			withIntermediateDirectories: true,
-			attributes: nil
+		return .init(
+			directoryURL: URL(filePath: path),
+			fxcodexExecutableURL: URL(filePath: executablePath),
+			workspaceIDs: workspaceIDs
 		)
-		try self.writeScriptCommand(
-			to: self.scriptCommandURL(
-				for: workspace,
-				in: directoryURL
-			),
-			workspace: workspace,
-			fxcodexExecutableURL: fxcodexExecutableURL
-		)
-
-		var updatedWorkspace: Workspace = workspace
-		updatedWorkspace.raycastScriptCommandConfiguration = .init(
-			directoryURL: directoryURL,
-			fxcodexExecutableURL: fxcodexExecutableURL
-		)
-		return try self.workspaces.save(updatedWorkspace)
 	}
 
-	private func removeScriptCommand(for workspace: Workspace) throws {
-		guard let configuration = workspace.raycastScriptCommandConfiguration
-		else { return }
-		try self.removeManagedScriptCommand(
-			at: self.scriptCommandURL(
-				for: workspace,
-				in: configuration.directoryURL
+	func saveConfiguration(_ configuration: RaycastScriptCommandConfiguration) throws {
+		var value: [String: CodableValue] = [
+			"path": .string(configuration.directoryURL.path),
+			"executable_path": .string(configuration.fxcodexExecutableURL.path),
+		]
+
+		if let workspaceIDs = configuration.workspaceIDs {
+			value["workspace_ids"] = .array(
+				workspaceIDs.sorted().map { .string($0.rawValue) }
 			)
+		}
+
+		try self.attributes.set(
+			"raycast",
+			.init("script_commands"),
+			.dictionary(value)
 		)
 	}
 
-	private func removeManagedScriptCommand(at url: URL) throws {
-		guard FileManager.default.fileExists(atPath: url.path)
-		else { return }
-		guard try self.isManagedScriptCommand(at: url)
-		else { return }
+	func reconcileIfConfigured() throws {
+		guard let configuration = try self.configuration() else { return }
+		try self.reconcile(configuration)
+	}
+
+	func reconcile(_ configuration: RaycastScriptCommandConfiguration) throws {
+		try FileManager.default.createDirectory(
+			at: configuration.generatedDirectoryURL,
+			withIntermediateDirectories: true,
+			attributes: [.posixPermissions: 0o755]
+		)
+
+		let workspaces = try self.workspaces.list().filter(configuration.includes)
+		let expectedURLs = Set(workspaces.map { self.scriptCommandURL(for: $0, configuration: configuration) })
+
+		for url in try FileManager.default.contentsOfDirectory(
+			at: configuration.generatedDirectoryURL,
+			includingPropertiesForKeys: [.isRegularFileKey],
+			options: [.skipsHiddenFiles]
+		) where url.pathExtension == "sh" && !expectedURLs.contains(url) {
+			try self.removeManagedScriptCommand(at: url)
+		}
+
+		for workspace in workspaces {
+			try self.writeScriptCommand(
+				to: self.scriptCommandURL(for: workspace, configuration: configuration),
+				workspace: workspace,
+				fxcodexExecutableURL: configuration.fxcodexExecutableURL
+			)
+		}
+	}
+
+	func removeManagedCommands(in directoryURL: URL) throws {
+		guard FileManager.default.fileExists(atPath: directoryURL.path) else { return }
+
+		for url in try FileManager.default.contentsOfDirectory(
+			at: directoryURL,
+			includingPropertiesForKeys: [.isRegularFileKey],
+			options: [.skipsHiddenFiles]
+		) where url.pathExtension == "sh" {
+			try self.removeManagedScriptCommand(at: url)
+		}
+
+		if try FileManager.default.contentsOfDirectory(atPath: directoryURL.path).isEmpty {
+			try FileManager.default.removeItem(at: directoryURL)
+		}
+	}
+
+	func removeManagedScriptCommand(at url: URL) throws {
+		guard try self.isManagedScriptCommand(at: url) else { return }
+
 		try FileManager.default.removeItem(at: url)
 		for iconURL in self.scriptCommandIconURLs(forScriptCommandAt: url) {
-			guard FileManager.default.fileExists(atPath: iconURL.path)
-			else { continue }
-			try FileManager.default.removeItem(at: iconURL)
+			if FileManager.default.fileExists(atPath: iconURL.path) {
+				try FileManager.default.removeItem(at: iconURL)
+			}
 		}
 	}
 
-	private func isManagedScriptCommand(at url: URL) throws -> Bool {
-		guard FileManager.default.fileExists(atPath: url.path)
-		else { return false }
-		let contents: String = try .init(contentsOf: url, encoding: .utf8)
-		return contents.contains(Self.scriptCommandMarker)
+	func isManagedScriptCommand(at url: URL) throws -> Bool {
+		guard FileManager.default.fileExists(atPath: url.path) else { return false }
+		return try String(contentsOf: url, encoding: .utf8).contains(Self.scriptCommandMarker)
 	}
 
-	private func scriptCommandURL(
+	func scriptCommandURL(
 		for workspace: Workspace,
-		in directoryURL: URL
+		configuration: RaycastScriptCommandConfiguration
 	) -> URL {
-		directoryURL.appending(
-			path: "fxcodex-open-\(workspace.name).sh",
+		configuration.generatedDirectoryURL.appending(
+			path: "\(workspace.id.rawValue).sh",
 			directoryHint: .notDirectory
 		)
 	}
 
-	private func writeScriptCommand(
-		to url: URL,
-		workspace: Workspace,
-		fxcodexExecutableURL: URL
-	) throws {
-		let iconURLs: [URL] = self.scriptCommandIconURLs(forScriptCommandAt: url)
-		try RaycastScriptCommandIcon.light.write(
-			to: iconURLs[0],
-			options: .atomic
-		)
-		try RaycastScriptCommandIcon.dark.write(
-			to: iconURLs[1],
-			options: .atomic
-		)
-
-		let contents: String = """
+	func writeScriptCommand(to url: URL, workspace: Workspace, fxcodexExecutableURL: URL) throws {
+		let iconURLs = self.scriptCommandIconURLs(forScriptCommandAt: url)
+		try RaycastScriptCommandIcon.light.write(to: iconURLs[0], options: .atomic)
+		try RaycastScriptCommandIcon.dark.write(to: iconURLs[1], options: .atomic)
+		let title = workspace.kind == .primary ? "Codex" : "Codex (\(workspace.name.capitalized))"
+		let contents = """
 		#!/bin/bash
 		\(Self.scriptCommandMarker)
 
 		# Required parameters:
 		# @raycast.schemaVersion 1
-		# @raycast.title Codex (\(workspace.name.capitalized))
+		# @raycast.title \(title)
 		# @raycast.mode silent
 
 		# Optional parameters:
@@ -339,122 +301,46 @@ extension RaycastIntegration {
 		# @raycast.iconDark ./\(iconURLs[1].lastPathComponent)
 		# @raycast.description Open or focus the \(workspace.name) Codex workspace
 
-		exec \(self.shellQuote(fxcodexExecutableURL.path)) open \(self.shellQuote(workspace.name))
+		exec \(self.shellQuote(fxcodexExecutableURL.path)) open --workspace-id \(self.shellQuote(workspace.id.rawValue))
 		"""
-
-		try contents.write(
-			to: url,
-			atomically: true,
-			encoding: .utf8
-		)
-		try FileManager.default.setAttributes(
-			[.posixPermissions: 0o755],
-			ofItemAtPath: url.path
-		)
+		try contents.write(to: url, atomically: true, encoding: .utf8)
+		try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
 	}
 
-	private func scriptCommandIconURLs(
-		forScriptCommandAt url: URL
-	) -> [URL] {
-		let directoryURL: URL = url.deletingLastPathComponent()
-		let name: String = url.deletingPathExtension().lastPathComponent
+	func scriptCommandIconURLs(forScriptCommandAt url: URL) -> [URL] {
+		let directoryURL = url.deletingLastPathComponent()
+		let name = url.deletingPathExtension().lastPathComponent
 		return [
 			directoryURL.appending(path: "\(name)-light.png"),
 			directoryURL.appending(path: "\(name)-dark.png"),
 		]
 	}
 
-	private func setAutomaticManagement(
-		_ configuration: RaycastScriptCommandConfiguration?
-	) throws {
-		var primaryWorkspace: Workspace = try self.workspaces.findWorkspace(
-			named: Workspace.primaryName
-		)
-		primaryWorkspace.raycastAutomaticManagement = configuration
-		_ = try self.workspaces.save(primaryWorkspace)
-	}
-
-	private func shellQuote(_ value: String) -> String {
+	func shellQuote(_ value: String) -> String {
 		"'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
 	}
 }
 
 private struct RaycastScriptCommandConfiguration: Equatable, Sendable {
 	let directoryURL: URL
-	let fxcodexExecutableURL: URL
+	var fxcodexExecutableURL: URL
+	let workspaceIDs: Set<WorkspaceID>?
 
 	init(
 		directoryURL: URL,
-		fxcodexExecutableURL: URL
+		fxcodexExecutableURL: URL,
+		workspaceIDs: Set<WorkspaceID>?
 	) {
 		self.directoryURL = directoryURL.standardizedFileURL
 		self.fxcodexExecutableURL = fxcodexExecutableURL.standardizedFileURL
-	}
-}
-
-extension Workspace {
-	fileprivate var raycastIntegration: [String: CodableValue] {
-		get { self.integrations["raycast"]?[case: \.dictionary] ?? [:] }
-		set {
-			if newValue.isEmpty {
-				self.integrations.removeValue(forKey: "raycast")
-			} else {
-				self.integrations["raycast"] = .dictionary(newValue)
-			}
-		}
+		self.workspaceIDs = workspaceIDs
 	}
 
-	fileprivate var raycastScriptCommandConfiguration: RaycastScriptCommandConfiguration? {
-		get {
-			guard
-				let value = self.raycastIntegration["script_command"]?[case: \.dictionary],
-				let directoryPath = value["directory_path"]?[case: \.string],
-				let executablePath = value["fxcodex_executable_path"]?[case: \.string]
-			else { return nil }
-			return .init(
-				directoryURL: URL(filePath: directoryPath),
-				fxcodexExecutableURL: URL(filePath: executablePath)
-			)
-		}
-		set {
-			var integration: [String: CodableValue] = self.raycastIntegration
-			if let newValue {
-				integration["script_command"] = .dictionary([
-					"directory_path": .string(newValue.directoryURL.path),
-					"fxcodex_executable_path": .string(newValue.fxcodexExecutableURL.path),
-				])
-			} else {
-				integration.removeValue(forKey: "script_command")
-			}
-			self.raycastIntegration = integration
-		}
+	var generatedDirectoryURL: URL {
+		self.directoryURL.appending(path: "fxcodex", directoryHint: .isDirectory)
 	}
 
-	fileprivate var raycastAutomaticManagement: RaycastScriptCommandConfiguration? {
-		get {
-			guard
-				let value = self.raycastIntegration["automatic_script_commands"]?[case: \.dictionary],
-				value["enabled"]?[case: \.bool] == true,
-				let directoryPath = value["directory_path"]?[case: \.string],
-				let executablePath = value["fxcodex_executable_path"]?[case: \.string]
-			else { return nil }
-			return .init(
-				directoryURL: URL(filePath: directoryPath),
-				fxcodexExecutableURL: URL(filePath: executablePath)
-			)
-		}
-		set {
-			var integration: [String: CodableValue] = self.raycastIntegration
-			if let newValue {
-				integration["automatic_script_commands"] = .dictionary([
-					"enabled": .bool(true),
-					"directory_path": .string(newValue.directoryURL.path),
-					"fxcodex_executable_path": .string(newValue.fxcodexExecutableURL.path),
-				])
-			} else {
-				integration.removeValue(forKey: "automatic_script_commands")
-			}
-			self.raycastIntegration = integration
-		}
+	func includes(_ workspace: Workspace) -> Bool {
+		self.workspaceIDs?.contains(workspace.id) ?? true
 	}
 }

@@ -1,13 +1,16 @@
 import CryptoKit
 import Foundation
 import Testing
-@testable import FXCodexClient
+@testable
+import FXCodexClient
 
 @Suite("GitHub release updater", .serialized)
 struct GitHubReleaseUpdaterTests {
 	@Test("Selects releases using constraints anchored at an optional minimum version")
 	func selection() async throws {
 		let currentVersion: SemanticVersion = try #require(.init("1.2.3"))
+		let minimumMinorVersion: SemanticVersion = try #require(.init("1.3.0"))
+		let minimumMajorVersion: SemanticVersion = try #require(.init("2.0.0"))
 		let releases: [GitHubReleaseUpdater.Release] = [
 			Self.release("v1.2.4"),
 			Self.release("v1.3.0"),
@@ -46,19 +49,19 @@ struct GitHubReleaseUpdaterTests {
 			releases,
 			currentVersion,
 			.patch,
-			try #require(.init("1.3.0"))
+			minimumMinorVersion
 		) == "1.3.5")
 		#expect(Self.selectedVersion(
 			releases,
 			currentVersion,
 			.minor,
-			try #require(.init("1.3.0"))
+			minimumMinorVersion
 		) == "1.4.0")
 		#expect(Self.selectedVersion(
 			releases,
 			currentVersion,
 			.major,
-			try #require(.init("2.0.0"))
+			minimumMajorVersion
 		) == "2.0.0")
 	}
 
