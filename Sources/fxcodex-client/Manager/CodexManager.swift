@@ -51,6 +51,7 @@ actor CodexManager {
 						code: "automatic_rename_failed",
 						message: "Automatic rename failed, but Codex.app is available and will be used: \(error.localizedDescription)"
 					))
+
 				} else {
 					throw error
 				}
@@ -114,6 +115,7 @@ actor CodexManager {
 		let managedWorkspaces: [Workspace] = try self.workspacesStorage.list().filter {
 			$0.kind == .managed
 		}
+
 		switch disposition {
 		case .leave:
 			_ = try await self.integrations.raycast.uninstallScriptCommands()
@@ -137,6 +139,18 @@ actor CodexManager {
 
 	func workspaces() throws -> [Workspace] {
 		try workspacesStorage.list()
+	}
+
+	func prepareStorage() throws {
+		try self.workspacesStorage.prepare()
+	}
+
+	func storageMigrationPlan() throws -> StorageMigrationPlan? {
+		try Migrator(fileManager: .default).migrationPlan()
+	}
+
+	func migrateStorage(_ migration: StorageMigration) throws {
+		try Migrator(fileManager: .default).migrate(migration)
 	}
 
 	func currentWorkspace() throws -> Workspace {
@@ -175,6 +189,7 @@ actor CodexManager {
 		to newName: String
 	) async throws -> Workspace {
 		let workspace: Workspace = try self.workspacesStorage.findWorkspace(named: oldName)
+
 		guard try await self.application.runningProcessID(workspace) == nil
 		else { throw FXCodexError.workspaceIsRunning(workspace.name) }
 
@@ -182,24 +197,27 @@ actor CodexManager {
 			workspace,
 			to: newName
 		)
-		let integratedWorkspace: Workspace = try await self.integrations.raycast.workspaceRenamed(
+		return try await self.integrations.raycast.workspaceRenamed(
 			workspace,
 			renamedWorkspace
 		)
-		try await self.application.renameRecord(
-			workspace.name,
-			integratedWorkspace.name
-		)
-		return integratedWorkspace
 	}
 
 	func useWorkspace(named name: String) throws {
 		try self.workspacesStorage.setCurrent(self.workspacesStorage.findWorkspace(named: name))
 	}
 
+	func useWorkspace(id: WorkspaceID) throws {
+		try self.workspacesStorage.setCurrent(self.workspacesStorage.findWorkspaceByID(id))
+	}
+
 	func openWorkspace(named name: String?) async throws -> Int32 {
 		let workspace: Workspace = try self.workspacesStorage.findWorkspace(named: name)
 		return try await self.application.open(workspace)
+	}
+
+	func openWorkspace(id: WorkspaceID) async throws -> Int32 {
+		try await self.application.open(self.workspacesStorage.findWorkspaceByID(id))
 	}
 
 	func codexInvocation(
@@ -212,7 +230,9 @@ actor CodexManager {
 		if workspace.kind == .managed {
 			guard let codexHomeURL = workspace.codexHomeURL
 			else { throw FXCodexError.workspaceNotFound(workspace.name) }
+
 			environment = ["CODEX_HOME": codexHomeURL.path]
+
 		} else {
 			environment = [:]
 		}
@@ -225,16 +245,19 @@ actor CodexManager {
 	}
 
 	func status() async throws -> FXCodexStatus {
-		let currentWorkspaceName: String = try self.workspacesStorage.currentWorkspace().name
+		let currentWorkspace = try self.workspacesStorage.currentWorkspace()
 		var workspaceStatuses: [WorkspaceStatus] = []
+
 		for workspace in try self.workspacesStorage.list() {
 			workspaceStatuses.append(.init(
 				workspace: workspace,
-				isCurrent: workspace.name == currentWorkspaceName,
+				isCurrent: workspace.id == currentWorkspace.id,
 				processID: try await self.application.runningProcessID(workspace)
 			))
 		}
+
 		var raycastApplications: [RaycastApplicationStatus] = []
+
 		for edition in RaycastEdition.allCases {
 			raycastApplications.append(
 				try await self.integrations.raycast.applicationStatus(edition)
@@ -242,7 +265,8 @@ actor CodexManager {
 		}
 
 		return .init(
-			currentWorkspace: currentWorkspaceName,
+			currentWorkspace: currentWorkspace.name,
+			currentWorkspaceID: currentWorkspace.id,
 			supportDirectoryURL: self.paths.rootURL,
 			applicationURL: await self.application.applicationURL(),
 			preferences: try self.preferencesStorage.load(),
@@ -265,11 +289,14 @@ extension CodexManager {
 
 	private func managedWorkspaces(named names: [String]) throws -> [Workspace] {
 		var resolvedNames: Set<String> = []
+
 		return try names.compactMap { name in
 			guard resolvedNames.insert(name).inserted else { return nil }
+
 			let workspace: Workspace = try self.workspacesStorage.findWorkspace(named: name)
-			guard workspace.kind == .managed
-			else { throw FXCodexError.primaryWorkspaceMutation }
+
+			guard workspace.kind == .managed else { throw FXCodexError.primaryWorkspaceMutation }
+
 			return workspace
 		}
 	}
@@ -283,25 +310,29 @@ extension CodexManager {
 
 	private func deleteWorkspaces(_ workspaces: [Workspace]) async throws {
 		try await self.ensureStopped(workspaces)
+
 		for workspace in workspaces {
-			guard workspace.kind == .managed
-			else { throw FXCodexError.primaryWorkspaceMutation }
+			guard workspace.kind == .managed else { throw FXCodexError.primaryWorkspaceMutation }
+
 			try await self.integrations.raycast.workspaceDeleted(workspace)
 			try self.workspacesStorage.delete(workspace)
-			try await self.application.removeRecord(workspace.name)
+			try await self.application.removeRecord(workspace)
 		}
 	}
 
 	private func eraseWorkspaces(_ workspaces: [Workspace]) async throws -> [Workspace] {
 		try await self.ensureStopped(workspaces)
+
 		var erasedWorkspaces: [Workspace] = []
+
 		for workspace in workspaces {
-			guard workspace.kind == .managed
-			else { throw FXCodexError.primaryWorkspaceMutation }
+			guard workspace.kind == .managed else { throw FXCodexError.primaryWorkspaceMutation }
+
 			try await self.integrations.raycast.workspaceErased(workspace)
 			erasedWorkspaces.append(try self.workspacesStorage.erase(workspace))
-			try await self.application.removeRecord(workspace.name)
+			try await self.application.removeRecord(workspace)
 		}
+
 		return erasedWorkspaces
 	}
 }

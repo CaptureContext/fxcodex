@@ -23,7 +23,9 @@ extension AppCommand {
 		internal func run() async throws {
 			try rejectMachineOutput(for: "cli")
 
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
 			let invocation: CommandInvocation = try await client.codexInvocation(
 				self.workspaceName,
 				forwardedArguments(from: self.arguments)

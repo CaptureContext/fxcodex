@@ -35,20 +35,27 @@ extension AppCommand {
 		internal func run() async throws {
 			try rejectMachineOutput(for: "uninstall")
 
-			@Dependency(\._fxcodexTerminalPrompts) var prompts: TerminalPromptsClient
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
-			@Dependency(\._fxcodexSelfInstallation) var installation: SelfInstallationClient
-			guard let disposition = try self.resolveDisposition(prompts: prompts)
-			else { return }
+			@Dependency(\._fxcodexTerminalPrompts)
+			var prompts: TerminalPromptsClient
+
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
+			@Dependency(\._fxcodexSelfInstallation)
+			var installation: SelfInstallationClient
+
+			guard let disposition = try self.resolveDisposition(prompts: prompts) else { return }
+
 			if !self.yes {
-				guard try prompts.confirm(self.confirmationMessage(disposition)) == true
-				else { return }
+				guard try prompts.confirm(self.confirmationMessage(disposition)) == true else { return }
 			}
 
 			try await client.uninstallData(disposition)
+
 			let method: SelfUninstallMethod = try installation.uninstall(
 				currentExecutableURL()
 			)
+
 			let reporter: TerminalReporter = await .init()
 			await reporter.success(
 				"Uninstalled fxcodex\(method == .homebrew ? " using Homebrew" : "")."
@@ -64,26 +71,30 @@ extension AppCommand.UninstallCommand {
 		if let dataDisposition = self.dataDisposition {
 			return dataDisposition.value
 		}
-		guard let selection = try prompts.select(
-			"What should happen to fxcodex data?",
-			[
-				.init(
-					value: UninstallDataDisposition.leave.rawValue,
-					label: "Keep data",
-					hint: "remove integrations but retain workspaces and Codex data"
-				),
-				.init(
-					value: UninstallDataDisposition.erase.rawValue,
-					label: "Erase workspace data",
-					hint: "retain empty workspace definitions"
-				),
-				.init(
-					value: UninstallDataDisposition.delete.rawValue,
-					label: "Delete everything",
-					hint: "remove the entire fxcodex support directory"
-				),
-			]
-		) else { return nil }
+
+		guard
+			let selection = try prompts.select(
+				"What should happen to fxcodex data?",
+				[
+					.init(
+						value: UninstallDataDisposition.leave.rawValue,
+						label: "Keep data",
+						hint: "remove integrations but retain workspaces and Codex data"
+					),
+					.init(
+						value: UninstallDataDisposition.erase.rawValue,
+						label: "Erase workspace data",
+						hint: "retain empty workspace definitions"
+					),
+					.init(
+						value: UninstallDataDisposition.delete.rawValue,
+						label: "Delete everything",
+						hint: "remove the entire fxcodex support directory"
+					),
+				]
+			)
+		else { return nil }
+
 		return .init(rawValue: selection)
 	}
 

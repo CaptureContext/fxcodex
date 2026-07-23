@@ -63,8 +63,7 @@ final class UpdateCheckStorage: @unchecked Sendable {
 		if self.fileManager.fileExists(atPath: self.paths.updateStateURL.path) {
 			let data: Data = try .init(contentsOf: self.paths.updateStateURL)
 			let state: State = try self.decoder.decode(State.self, from: data)
-			guard date.timeIntervalSince(state.lastAutomaticCheck) >= minimumInterval
-			else { return false }
+			guard date.timeIntervalSince(state.lastAutomaticCheck) >= minimumInterval else { return false }
 		}
 
 		try self.fileManager.createDirectory(

@@ -4,6 +4,9 @@ import Foundation
 
 @DependencyClient
 public struct FXCodexClient: Sendable {
+	public var storageMigrationPlan: @Sendable () async throws -> StorageMigrationPlan?
+	public var migrateStorage: @Sendable (StorageMigration) async throws -> Void
+	public var prepareStorage: @Sendable () async throws -> Void
 	public var applyAutomaticPreferences: @Sendable (SemanticVersion, URL, Bool) async throws -> [FXCodexWarning]
 	public var preferences: @Sendable () async throws -> FXCodexPreferences
 	public var setAutoRename: @Sendable (Bool) async throws -> FXCodexPreferences
@@ -20,7 +23,9 @@ public struct FXCodexClient: Sendable {
 	public var eraseWorkspaces: @Sendable ([String]) async throws -> [Workspace]
 	public var renameWorkspace: @Sendable (String?, String) async throws -> Workspace
 	public var useWorkspace: @Sendable (String) async throws -> Void
+	public var useWorkspaceByID: @Sendable (WorkspaceID) async throws -> Void
 	public var openWorkspace: @Sendable (String?) async throws -> Int32
+	public var openWorkspaceByID: @Sendable (WorkspaceID) async throws -> Int32
 	public var codexInvocation: @Sendable (String?, [String]) async throws -> CommandInvocation
 	public var status: @Sendable () async throws -> FXCodexStatus
 }
@@ -36,6 +41,9 @@ extension DependencyValues {
 		static var liveValue: FXCodexClient {
 			let manager = CodexManager()
 			return .init(
+				storageMigrationPlan: { try await manager.storageMigrationPlan() },
+				migrateStorage: { try await manager.migrateStorage($0) },
+				prepareStorage: { try await manager.prepareStorage() },
 				applyAutomaticPreferences: manager.applyAutomaticPreferences,
 				preferences: { try await manager.preferences() },
 				setAutoRename: { try await manager.setAutoRename(to: $0) },
@@ -52,7 +60,9 @@ extension DependencyValues {
 				eraseWorkspaces: manager.eraseWorkspaces,
 				renameWorkspace: manager.renameWorkspace,
 				useWorkspace: { try await manager.useWorkspace(named: $0) },
+				useWorkspaceByID: { try await manager.useWorkspace(id: $0) },
 				openWorkspace: manager.openWorkspace,
+				openWorkspaceByID: { try await manager.openWorkspace(id: $0) },
 				codexInvocation: { try await manager.codexInvocation(workspaceName: $0, arguments: $1) },
 				status: manager.status
 			)

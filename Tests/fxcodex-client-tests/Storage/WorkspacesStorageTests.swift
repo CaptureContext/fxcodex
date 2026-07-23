@@ -1,7 +1,9 @@
 import Dependencies
 import Foundation
 import Testing
-@_spi(Internals) @testable import FXCodexClient
+@_spi(Internals)
+@testable
+import FXCodexClient
 
 @Suite("Workspace storage")
 struct WorkspacesStorageTests {
@@ -28,9 +30,11 @@ struct WorkspacesStorageTests {
 				JSONSerialization.jsonObject(with: configurationData) as? [String: Any]
 			)
 			#expect(Set(configuration.keys) == [
-				"current_workspace_name",
-				"workspace_integrations",
+				"schema_version",
+				"current_workspace_id",
+				"integrations",
 			])
+			#expect(configuration["current_workspace_id"] as? String == workspace.id.rawValue)
 
 			let persistedWorkspace: Workspace = try storage.workspace(named: workspace.name)
 			#expect(persistedWorkspace.integrations == workspace.integrations)
@@ -87,7 +91,7 @@ struct WorkspacesStorageTests {
 		}
 	}
 
-	@Test("Erase preserves workspace directories while removing their contents and metadata")
+	@Test("Erase preserves workspace directories and integration metadata while removing managed data")
 	func eraseWorkspace() async throws {
 		let fixture: ClientTestFixture = try .init()
 		defer { fixture.remove() }
@@ -127,7 +131,7 @@ struct WorkspacesStorageTests {
 			)
 
 			let erasedWorkspace: Workspace = try storage.eraseWorkspace(named: workspace.name)
-			#expect(erasedWorkspace.integrations.isEmpty)
+			#expect(erasedWorkspace.integrations == workspace.integrations)
 			#expect(try storage.currentWorkspaceName() == workspace.name)
 			#expect(try FileManager.default.contentsOfDirectory(atPath: codexHomeURL.path).isEmpty)
 			#expect(try FileManager.default.contentsOfDirectory(atPath: userDataURL.path).isEmpty)

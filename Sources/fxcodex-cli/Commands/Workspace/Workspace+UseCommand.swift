@@ -21,14 +21,22 @@ extension AppCommand.WorkspaceCommand {
 		internal init() {}
 
 		internal func run() async throws {
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
-			@Dependency(\._fxcodexTerminalPrompts) var prompts: TerminalPromptsClient
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
+			@Dependency(\._fxcodexTerminalPrompts)
+			var prompts: TerminalPromptsClient
+
 			let json: Bool = machineOutputRequested(self.json)
+
 			let name: String
+
 			if let providedName = self.name {
 				name = providedName
+
 			} else if json {
 				throw ValidationError("A workspace name is required when using --json.")
+
 			} else {
 				let currentWorkspace: Workspace = try await client.currentWorkspace()
 				let options: [TerminalPromptOption] = try await client.workspaces().map { workspace in
@@ -38,14 +46,17 @@ extension AppCommand.WorkspaceCommand {
 						hint: workspace.name == currentWorkspace.name ? "current" : nil
 					)
 				}
+
 				guard let selectedName = try prompts.select(
 					"Select a workspace to use:",
 					options
 				) else { return }
+
 				name = selectedName
 			}
 
 			try await client.useWorkspace(name)
+
 			if json {
 				try printMachineResponse(try await client.currentWorkspace())
 				return

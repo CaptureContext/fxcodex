@@ -8,8 +8,7 @@ struct CodexApplicationClient: Sendable {
 	var rename: @Sendable (CodexApplicationName) async throws -> CodexApplicationRenameResult
 	var open: @Sendable (Workspace) async throws -> Int32
 	var runningProcessID: @Sendable (Workspace) async throws -> Int32?
-	var removeRecord: @Sendable (_ forWorkspaceNamed: String) async throws -> Void
-	var renameRecord: @Sendable (_ from: String, _ to: String) async throws -> Void
+	var removeRecord: @Sendable (_ workspace: Workspace) async throws -> Void
 }
 
 extension DependencyValues {
@@ -34,11 +33,7 @@ extension DependencyValues {
 				},
 				removeRecord: {
 					let controller: CodexApplicationController = await .init()
-					try await controller.removeRecord(forWorkspaceNamed: $0)
-				},
-				renameRecord: {
-					let controller: CodexApplicationController = await .init()
-					try await controller.renameRecord(from: $0, to: $1)
+					try await controller.removeRecord(forWorkspaceID: $0.id)
 				}
 			)
 		}

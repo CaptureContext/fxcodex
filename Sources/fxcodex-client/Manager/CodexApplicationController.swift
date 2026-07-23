@@ -41,10 +41,8 @@ public final class CodexApplicationController {
 		.reduce(into: [URL]()) { urls, url in
 			let standardizedURL: URL = url.standardizedFileURL
 			guard !urls.contains(standardizedURL) else { return }
-			guard self.fileManager.fileExists(atPath: standardizedURL.path)
-			else { return }
-			guard Bundle(url: standardizedURL)?.bundleIdentifier == Self.bundleIdentifier
-			else { return }
+			guard self.fileManager.fileExists(atPath: standardizedURL.path) else { return }
+			guard Bundle(url: standardizedURL)?.bundleIdentifier == Self.bundleIdentifier else { return }
 			urls.append(standardizedURL)
 		}
 
@@ -112,8 +110,7 @@ public final class CodexApplicationController {
 			return application.processIdentifier
 		}
 
-		guard let applicationURL = self.applicationURL()
-		else { throw FXCodexError.applicationNotFound }
+		guard let applicationURL = self.applicationURL() else { throw FXCodexError.applicationNotFound }
 
 		let configuration: NSWorkspace.OpenConfiguration = .init()
 		configuration.activates = true
@@ -140,7 +137,7 @@ public final class CodexApplicationController {
 		)
 		try self.cache(
 			application: application,
-			forWorkspaceNamed: workspace.name
+			forWorkspaceID: workspace.id
 		)
 
 		return application.processIdentifier
@@ -150,38 +147,27 @@ public final class CodexApplicationController {
 		try self.runningApplication(for: workspace)?.processIdentifier
 	}
 
-	public func removeRecord(forWorkspaceNamed name: String) throws {
-		try self.instances.remove(for: name)
-	}
-
-	public func renameRecord(
-		from oldName: String,
-		to newName: String
-	) throws {
-		try self.instances.transfer(
-			from: oldName,
-			to: newName
-		)
+	public func removeRecord(forWorkspaceID id: WorkspaceID) throws {
+		try self.instances.remove(for: id)
 	}
 }
 
 @MainActor
-extension CodexApplicationController {
+	extension CodexApplicationController {
 	private func runningApplication(for workspace: Workspace) throws -> NSRunningApplication? {
-		if
-			let record = try self.instances.find(for: workspace.name),
-			let application = self.validatedApplication(for: record)
-		{
+		let record = try self.instances.find(for: workspace.id)
+		let application = record.flatMap { self.validatedApplication(for: $0) }
+		if let application {
 			return application
 		}
 
-		try self.instances.remove(for: workspace.name)
+		try self.instances.remove(for: workspace.id)
 
 		guard workspace.kind == .primary else { return nil }
-		let records: [String: ApplicationInstanceRecord] = try self.instances.list()
+		let records: [WorkspaceID: ApplicationInstanceRecord] = try self.instances.list()
 		let managedProcessIDs: Set<Int32> = .init(
 			records
-			.filter { $0.key != Workspace.primaryName }
+			.filter { $0.key != workspace.id }
 			.compactMap { self.validatedApplication(for: $0.value)?.processIdentifier }
 		)
 		let candidates: [NSRunningApplication] = NSRunningApplication.runningApplications(
@@ -201,7 +187,7 @@ extension CodexApplicationController {
 
 		try self.cache(
 			application: application,
-			forWorkspaceNamed: Workspace.primaryName
+			forWorkspaceID: workspace.id
 		)
 		return application
 	}
@@ -209,23 +195,23 @@ extension CodexApplicationController {
 	private func validatedApplication(
 		for record: ApplicationInstanceRecord
 	) -> NSRunningApplication? {
-		guard let application = NSRunningApplication(
-			processIdentifier: record.processID
-		) else { return nil }
+		guard let application = NSRunningApplication(processIdentifier: record.processID) else { return nil }
+
 		guard !application.isTerminated else { return nil }
 		guard application.bundleIdentifier == Self.bundleIdentifier else { return nil }
+
 		guard application.bundleURL?.standardizedFileURL == record.bundleURL.standardizedFileURL
 		else { return nil }
+
 		guard let launchDate = application.launchDate else { return nil }
-		guard abs(launchDate.timeIntervalSince(record.launchDate)) < 1
-		else { return nil }
+		guard abs(launchDate.timeIntervalSince(record.launchDate)) < 1 else { return nil }
 
 		return application
 	}
 
 	private func cache(
 		application: NSRunningApplication,
-		forWorkspaceNamed name: String
+		forWorkspaceID id: WorkspaceID
 	) throws {
 		guard
 			let bundleURL = application.bundleURL,
@@ -238,7 +224,7 @@ extension CodexApplicationController {
 				launchDate: launchDate,
 				processID: application.processIdentifier
 			),
-			for: name
+			for: id
 		)
 	}
 

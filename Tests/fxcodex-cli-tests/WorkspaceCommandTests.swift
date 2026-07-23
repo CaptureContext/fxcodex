@@ -1,6 +1,7 @@
 import ArgumentParser
 import Testing
-@testable import FXCodexCLI
+@testable
+import FXCodexCLI
 
 @Suite("Workspace command")
 struct WorkspaceCommandTests {
@@ -16,6 +17,9 @@ struct WorkspaceCommandTests {
 		#expect(command.use)
 		#expect(command.open)
 		#expect(command.json == true)
+
+		let interactive: AppCommand.WorkspaceCommand.Create = try .parse([])
+		#expect(interactive.name == nil)
 	}
 
 	@Test("Delete parses multiple workspaces and confirmation flag")
@@ -64,6 +68,10 @@ struct WorkspaceCommandTests {
 		])
 		#expect(explicit.firstName == "old-name")
 		#expect(explicit.secondName == "new-name")
+
+		let interactive: AppCommand.WorkspaceCommand.Rename = try .parse([])
+		#expect(interactive.firstName == nil)
+		#expect(interactive.secondName == nil)
 	}
 
 	@Test("Use requires a workspace")

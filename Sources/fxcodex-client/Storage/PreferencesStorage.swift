@@ -47,8 +47,7 @@ final class PreferencesStorage: @unchecked Sendable {
 	}
 
 	func load() throws -> FXCodexPreferences {
-		guard self.fileManager.fileExists(atPath: self.paths.preferencesURL.path)
-		else { return .init() }
+		guard self.fileManager.fileExists(atPath: self.paths.preferencesURL.path) else { return .init() }
 
 		let data: Data = try .init(contentsOf: self.paths.preferencesURL)
 		return try self.decoder.decode(

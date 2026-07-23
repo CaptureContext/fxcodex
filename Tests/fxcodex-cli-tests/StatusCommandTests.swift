@@ -2,7 +2,8 @@ import ArgumentParser
 import Foundation
 import FXCodexClient
 import Testing
-@testable import FXCodexCLI
+@testable
+import FXCodexCLI
 
 @Suite("Status command")
 struct StatusCommandTests {
@@ -61,6 +62,7 @@ struct StatusCommandTests {
 	func machineOutputSections() async throws {
 		let status: FXCodexStatus = .init(
 			currentWorkspace: Workspace.primaryName,
+			currentWorkspaceID: try #require(WorkspaceID("00000000-0000-0000-0000-000000000001")),
 			supportDirectoryURL: URL(fileURLWithPath: "/tmp/fxcodex"),
 			applicationURL: nil,
 			preferences: .init(autoRename: true),

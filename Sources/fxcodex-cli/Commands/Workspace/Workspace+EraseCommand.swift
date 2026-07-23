@@ -24,10 +24,16 @@ extension AppCommand.WorkspaceCommand {
 		internal init() {}
 
 		internal func run() async throws {
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
-			@Dependency(\._fxcodexTerminalPrompts) var prompts: TerminalPromptsClient
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
+			@Dependency(\._fxcodexTerminalPrompts)
+			var prompts: TerminalPromptsClient
+
 			let json: Bool = machineOutputRequested(self.json)
+
 			let names: [String]
+
 			if self.names.isEmpty {
 				guard !json else {
 					throw ValidationError("At least one workspace name is required when using --json.")
@@ -36,11 +42,13 @@ extension AppCommand.WorkspaceCommand {
 				let workspaces: [Workspace] = try await client.workspaces().filter { workspace in
 					workspace.kind == .managed
 				}
+
 				guard !workspaces.isEmpty else {
 					let reporter: TerminalReporter = await .init()
 					await reporter.info("There are no managed workspaces to erase.")
 					return
 				}
+
 				let options: [TerminalPromptOption] = workspaces.map { workspace in
 					.init(
 						value: workspace.name,
@@ -48,11 +56,14 @@ extension AppCommand.WorkspaceCommand {
 						hint: nil
 					)
 				}
+
 				guard let selectedNames = try prompts.multiselect(
 					"Select workspaces to erase:",
 					options
 				) else { return }
+
 				names = selectedNames
+
 			} else {
 				names = self.names.uniqued()
 			}
@@ -61,15 +72,19 @@ extension AppCommand.WorkspaceCommand {
 				throw ValidationError("--yes is required with --json when erasing workspaces.")
 			}
 
-			guard try self.yes || (prompts.confirm(
-				"Erase \(names.workspaceDescription), including Codex settings and session data?"
-			) == true) else {
+			guard
+				try self.yes
+				|| prompts.confirm(
+					"Erase \(names.workspaceDescription), including Codex settings and session data?"
+				) == true
+			else {
 				let reporter: TerminalReporter = await .init()
 				await reporter.warning("Cancelled.")
 				return
 			}
 
 			let workspaces: [Workspace] = try await client.eraseWorkspaces(names)
+
 			if json {
 				try printMachineResponse(workspaces)
 				return

@@ -1,6 +1,7 @@
 import ArgumentParser
 import Darwin
 import Dependencies
+import Foundation
 import Promptberry
 
 internal struct TerminalPromptOption: Equatable, Sendable {
@@ -23,6 +24,21 @@ internal struct TerminalPromptsClient: Sendable {
 	internal var select: @Sendable (String, [TerminalPromptOption]) throws -> String?
 	internal var multiselect: @Sendable (String, [TerminalPromptOption]) throws -> [String]?
 	internal var confirm: @Sendable (String) throws -> Bool?
+	internal var text: @Sendable (String, String) throws -> String?
+
+	internal init(
+		select: @escaping @Sendable (String, [TerminalPromptOption]) throws -> String?,
+		multiselect: @escaping @Sendable (String, [TerminalPromptOption]) throws -> [String]?,
+		confirm: @escaping @Sendable (String) throws -> Bool?,
+		text: @escaping @Sendable (String, String) throws -> String? = { _, _ in
+			throw ValidationError("Text input is not configured.")
+		}
+	) {
+		self.select = select
+		self.multiselect = multiselect
+		self.confirm = confirm
+		self.text = text
+	}
 }
 
 extension DependencyValues {
@@ -74,17 +90,30 @@ extension DependencyValues {
 					} catch is PromptCancelled {
 						return nil
 					}
+				},
+				text: { message, placeholder in
+					try Self.requireInteractiveTerminal()
+					do {
+						return try Promptberry.text(
+							message,
+							placeholder: placeholder,
+							validate: { value in
+								value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+									? "A value is required."
+									: nil
+							}
+						)
+					} catch is PromptCancelled {
+						return nil
+					}
 				}
 			)
 		}
 
 		private static func requireInteractiveTerminal() throws {
-			guard
-				isatty(STDIN_FILENO) != 0,
-				isatty(STDOUT_FILENO) != 0
-			else {
+			guard interactiveTerminalAvailable() else {
 				throw ValidationError(
-					"Interactive selection requires a terminal. Pass workspace names explicitly."
+					"Interactive input requires a terminal. Provide the required values explicitly."
 				)
 			}
 		}
@@ -94,4 +123,8 @@ extension DependencyValues {
 		get { self[TerminalPromptsClientKey.self] }
 		set { self[TerminalPromptsClientKey.self] = newValue }
 	}
+}
+
+internal func interactiveTerminalAvailable() -> Bool {
+	isatty(STDIN_FILENO) != 0 && isatty(STDOUT_FILENO) != 0
 }

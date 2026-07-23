@@ -1,6 +1,7 @@
 import ArgumentParser
 import Testing
-@testable import FXCodexCLI
+@testable
+import FXCodexCLI
 
 @Suite("Exec command")
 struct ExecCommandTests {

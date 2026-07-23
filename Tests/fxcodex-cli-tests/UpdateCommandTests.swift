@@ -2,7 +2,8 @@ import ArgumentParser
 import Foundation
 import FXCodexClient
 import Testing
-@testable import FXCodexCLI
+@testable
+import FXCodexCLI
 
 @Suite("Update command")
 struct UpdateCommandTests {

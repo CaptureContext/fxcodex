@@ -22,7 +22,9 @@ extension AppCommand {
 		internal init() {}
 
 		internal func run() async throws {
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
 			let requestedName: CodexApplicationName = self.undo ? .chatGPT : .codex
 			let result: CodexApplicationRenameResult = try await client.renameApplication(
 				requestedName
@@ -34,6 +36,7 @@ extension AppCommand {
 			}
 
 			let reporter: TerminalReporter = await .init()
+
 			switch result.outcome {
 			case .renamed:
 				await reporter.success(

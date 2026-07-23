@@ -1,7 +1,9 @@
 import Dependencies
 import Foundation
 import Testing
-@_spi(Internals) @testable import FXCodexClient
+@_spi(Internals)
+@testable
+import FXCodexClient
 
 @Suite("Preferences storage")
 struct PreferencesStorageTests {

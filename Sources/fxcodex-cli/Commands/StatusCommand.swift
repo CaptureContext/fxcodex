@@ -48,7 +48,9 @@ extension AppCommand {
 		internal init() {}
 
 		internal func run() async throws {
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
 			let sections: StatusSections = try self.sections()
 			let status: FXCodexStatus = try await client.status()
 
@@ -86,6 +88,7 @@ extension AppCommand {
 					let processDescription: String = workspace.processID
 					.map { "running · pid \($0)" }
 					?? "stopped"
+
 					await reporter.info(
 						"\(currentMarker) \(workspace.workspace.name)\t\(processDescription)"
 					)
@@ -99,6 +102,7 @@ extension AppCommand {
 					let description: String = raycast.applicationURL == nil
 					? "not installed"
 					: "installed · \(raycast.version ?? "unknown version")"
+
 					await reporter.info("  \(raycast.edition.displayName): \(description)")
 				}
 				await reporter.info(
@@ -111,8 +115,9 @@ extension AppCommand {
 
 extension AppCommand.StatusCommand {
 	internal func sections(
-		environment: [String: String] = ProcessInfo.processInfo.environment
+		environment: [String: String]? = nil
 	) throws -> StatusSections {
+		let environment = environment ?? currentEnvironment()
 		let environmentAll: Bool? = try environmentSwitch(
 			named: "FXCODEX_STATUS_ALL",
 			in: environment

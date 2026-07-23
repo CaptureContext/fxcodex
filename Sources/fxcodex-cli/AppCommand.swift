@@ -6,7 +6,7 @@ import FXCodexClient
 
 @main
 internal struct AppCommand: AsyncParsableCommand {
-	internal static let version: String = "0.1.1"
+	internal static let version: String = "0.2.0"
 	internal static let machineEncodingFailureResponse: String = """
 		{
 		  "api_version": 1,
@@ -59,12 +59,14 @@ internal struct AppCommand: AsyncParsableCommand {
 				for warning in warnings {
 					try printMachineWarning(warning)
 				}
+
 			} else {
 				let reporter: TerminalReporter = .init()
 				for warning in warnings {
 					reporter.warning(warning.message)
 				}
 			}
+
 			try await Self.execute(command)
 		} catch {
 			guard globalMachineOutputRequested(), !(error is CleanExit) else {
@@ -86,6 +88,10 @@ internal struct AppCommand: AsyncParsableCommand {
 	internal static func prepareForExecution(
 		_ command: any ParsableCommand
 	) async throws -> [FXCodexWarning] {
+		@Dependency(\.fxCodexClient)
+		var client: FXCodexClient
+
+		try await MigrationAssistant.prepareStorage(client: client)
 		guard !(command is Self) else { return [] }
 		guard !(command is PreferencesCommand.List) else { return [] }
 		guard !(command is PreferencesCommand.Set) else { return [] }
@@ -93,9 +99,9 @@ internal struct AppCommand: AsyncParsableCommand {
 		guard !(command is UpdateCommand) else { return [] }
 		guard !(command is UninstallCommand) else { return [] }
 
-		@Dependency(\.fxCodexClient) var client: FXCodexClient
 		guard let version = SemanticVersion(Self.version)
 		else { throw ValidationError("fxcodex has an invalid embedded version.") }
+
 		let executableURL: URL = currentExecutableURL()
 		return try await client.applyAutomaticPreferences(
 			version,
@@ -112,6 +118,7 @@ internal struct AppCommand: AsyncParsableCommand {
 		_ command: any ParsableCommand
 	) async throws {
 		var command: any ParsableCommand = command
+
 		if var asyncCommand = command as? any AsyncParsableCommand {
 			try await asyncCommand.run()
 		} else {

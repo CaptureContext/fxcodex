@@ -1,6 +1,7 @@
 import Foundation
 import Testing
-@testable import FXCodexClient
+@testable
+import FXCodexClient
 
 @Suite("Semantic version")
 struct SemanticVersionTests {

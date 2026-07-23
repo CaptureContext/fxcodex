@@ -7,7 +7,7 @@ extension Integrations {
 	public struct Raycast: Sendable {
 		public var applicationStatus: @Sendable (RaycastEdition) async throws -> RaycastApplicationStatus
 		public var applicationInstallation: @Sendable (RaycastEdition) async throws -> RaycastApplicationInstallation
-		public var installScriptCommands: @Sendable (URL, URL, Bool, Bool) async throws -> RaycastScriptCommandStatus
+		public var installScriptCommands: @Sendable (URL, URL, Bool) async throws -> RaycastScriptCommandStatus
 		public var syncScriptCommands: @Sendable (URL) async throws -> RaycastScriptCommandStatus
 		public var uninstallScriptCommands: @Sendable () async throws -> RaycastScriptCommandStatus
 		public var scriptCommandStatus: @Sendable () async throws -> RaycastScriptCommandStatus
@@ -33,8 +33,7 @@ extension DependencyValues {
 					try await integration.installScriptCommands(
 						at: $0,
 						fxcodexExecutableURL: $1,
-						includeCurrentWorkspace: $2,
-						includeAllWorkspaces: $3
+						currentWorkspaceOnly: $2
 					)
 				},
 				syncScriptCommands: {
@@ -67,6 +66,7 @@ extension DependencyValues {
 
 	@_spi(Internals)
 	public var _fxcodexRaycast: Integrations.Raycast {
+
 		get { self[RaycastIntegrationKey.self] }
 		set { self[RaycastIntegrationKey.self] = newValue }
 	}

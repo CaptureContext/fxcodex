@@ -8,6 +8,7 @@ public enum WorkspaceKind: String, Codable, Sendable {
 public struct Workspace: Codable, Equatable, Sendable {
 	public static let primaryName: String = "primary"
 
+	public let id: WorkspaceID
 	public let name: String
 	public let kind: WorkspaceKind
 	public let rootURL: URL?
@@ -16,6 +17,7 @@ public struct Workspace: Codable, Equatable, Sendable {
 	public var integrations: [String: CodableValue]
 
 	public init(
+		id: WorkspaceID = .generate(),
 		name: String,
 		kind: WorkspaceKind,
 		rootURL: URL?,
@@ -23,6 +25,7 @@ public struct Workspace: Codable, Equatable, Sendable {
 		userDataURL: URL?,
 		integrations: [String: CodableValue] = [:]
 	) {
+		self.id = id
 		self.name = name
 		self.kind = kind
 		self.rootURL = rootURL

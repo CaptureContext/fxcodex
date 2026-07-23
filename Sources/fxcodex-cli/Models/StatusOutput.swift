@@ -3,6 +3,7 @@ import FXCodexClient
 
 internal struct StatusOutput: Encodable {
 	internal let currentWorkspace: String
+	internal let currentWorkspaceID: WorkspaceID
 	internal let supportDirectoryURL: URL
 	internal let applicationURL: URL?
 	internal let preferences: FXCodexPreferences?
@@ -15,6 +16,7 @@ internal struct StatusOutput: Encodable {
 		sections: StatusSections
 	) {
 		self.currentWorkspace = status.currentWorkspace
+		self.currentWorkspaceID = status.currentWorkspaceID
 		self.supportDirectoryURL = status.supportDirectoryURL
 		self.applicationURL = status.applicationURL
 		self.preferences = sections.preferences ? status.preferences : nil

@@ -56,6 +56,7 @@ public struct SemanticVersion: Comparable, Codable, CustomStringConvertible, Sen
 			separator: ".",
 			omittingEmptySubsequences: false
 		)
+
 		guard
 			numberComponents.count == 3,
 			let major = Self.parseNumber(numberComponents[0]),
@@ -69,7 +70,9 @@ public struct SemanticVersion: Comparable, Codable, CustomStringConvertible, Sen
 				versionComponents[1],
 				numericLeadingZerosAllowed: false
 			) else { return nil }
+
 			prereleaseIdentifiers = identifiers
+
 		} else {
 			prereleaseIdentifiers = []
 		}
@@ -80,7 +83,9 @@ public struct SemanticVersion: Comparable, Codable, CustomStringConvertible, Sen
 				buildComponents[1],
 				numericLeadingZerosAllowed: true
 			) else { return nil }
+
 			buildMetadataIdentifiers = identifiers
+
 		} else {
 			buildMetadataIdentifiers = []
 		}
@@ -139,6 +144,7 @@ public struct SemanticVersion: Comparable, Codable, CustomStringConvertible, Sen
 			guard lhsIdentifier != rhsIdentifier else { continue }
 			let lhsNumber: Int? = Int(lhsIdentifier)
 			let rhsNumber: Int? = Int(rhsIdentifier)
+
 			switch (lhsNumber, rhsNumber) {
 			case let (.some(lhsNumber), .some(rhsNumber)):
 				return lhsNumber < rhsNumber
@@ -165,6 +171,7 @@ extension SemanticVersion {
 			value.allSatisfy(\.isNumber),
 			value == "0" || value.first != "0"
 		else { return nil }
+
 		return Int(value)
 	}
 
@@ -182,12 +189,12 @@ extension SemanticVersion {
 				!identifier.isEmpty,
 				identifier.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" })
 			else { return nil }
-			if
-				!numericLeadingZerosAllowed,
-				identifier.allSatisfy(\.isNumber),
-				identifier.count > 1,
-				identifier.first == "0"
-			{
+
+			let hasInvalidLeadingZero = !numericLeadingZerosAllowed
+				&& identifier.allSatisfy(\.isNumber)
+				&& identifier.count > 1
+				&& identifier.first == "0"
+			if hasInvalidLeadingZero {
 				return nil
 			}
 		}

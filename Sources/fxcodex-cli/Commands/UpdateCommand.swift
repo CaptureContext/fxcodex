@@ -45,9 +45,13 @@ extension AppCommand {
 		internal func run(executableURL: URL) async throws {
 			guard !isHomebrewManagedExecutable(executableURL)
 			else { throw FXCodexError.homebrewManagedUpdate }
-			@Dependency(\.fxCodexClient) var client: FXCodexClient
+
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
 			guard let currentVersion = SemanticVersion(AppCommand.version)
 			else { throw ValidationError("fxcodex has an invalid embedded version.") }
+
 			let result: UpdateResult = try await client.update(
 				currentVersion,
 				self.channel.value,
@@ -60,6 +64,7 @@ extension AppCommand {
 			}
 
 			let reporter: TerminalReporter = await .init()
+
 			switch result.outcome {
 			case .updated:
 				await reporter.success(

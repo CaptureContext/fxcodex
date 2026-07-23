@@ -14,7 +14,7 @@ internal final class TerminalReporter {
 		let console: Terminal = .init()
 		console.confirmOverride = assumeYes ? true : nil
 
-		if ProcessInfo.processInfo.environment["NO_COLOR"] != nil {
+		if currentEnvironment()["NO_COLOR"] != nil {
 			console.stylizedOutputOverride = false
 		}
 
@@ -56,14 +56,14 @@ internal func replaceProcess(
 	with invocation: CommandInvocation
 ) throws -> Never {
 	for (key, value) in invocation.environment {
-		guard setenv(key, value, 1) == 0
-		else { throw POSIXError(.init(rawValue: errno) ?? .EIO) }
+		guard setenv(key, value, 1) == 0 else { throw POSIXError(.init(rawValue: errno) ?? .EIO) }
 	}
 
 	let argumentStrings: [String] = [invocation.executable] + invocation.arguments
 	var arguments: [UnsafeMutablePointer<CChar>?] = argumentStrings.map { argument in
 		strdup(argument)
 	}
+
 	arguments.append(nil)
 
 	defer {
@@ -73,21 +73,30 @@ internal func replaceProcess(
 	}
 
 	execvp(invocation.executable, &arguments)
+
 	throw POSIXError(.init(rawValue: errno) ?? .ENOENT)
 }
 
 internal func runProcess(
-	_ invocation: CommandInvocation
+	_ invocation: CommandInvocation,
+	suppressOutput: Bool = false
 ) throws -> Int32 {
 	let process: Process = .init()
 	process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
 	process.arguments = [invocation.executable] + invocation.arguments
-	process.environment = ProcessInfo.processInfo.environment.merging(
+	process.environment = currentEnvironment().merging(
 		invocation.environment,
 		uniquingKeysWith: { _, newValue in newValue }
 	)
+
+	if suppressOutput {
+		process.standardOutput = FileHandle.nullDevice
+		process.standardError = FileHandle.nullDevice
+	}
+
 	try process.run()
 	process.waitUntilExit()
+
 	return process.terminationStatus
 }
 
@@ -127,8 +136,9 @@ internal func isHomebrewManagedExecutable(_ executableURL: URL) -> Bool {
 	let components: [String] = executableURL.standardizedFileURL
 		.resolvingSymlinksInPath()
 		.pathComponents
-	guard let cellarIndex = components.firstIndex(of: "Cellar")
-	else { return false }
+
+	guard let cellarIndex = components.firstIndex(of: "Cellar") else { return false }
+
 	return components.indices.contains(cellarIndex + 1)
 		&& components[cellarIndex + 1] == "fxcodex"
 }
@@ -141,8 +151,9 @@ internal func machineOutputRequested(
 
 internal func globalMachineOutputRequested(
 	arguments: [String] = .init(CommandLine.arguments.dropFirst()),
-	environment: [String: String] = ProcessInfo.processInfo.environment
+	environment: [String: String]? = nil
 ) -> Bool {
+	let environment = environment ?? currentEnvironment()
 	let passthroughCommandIndex: Int? = arguments.firstIndex { argument in
 		argument == "cli" || argument == "exec"
 	}
@@ -150,7 +161,9 @@ internal func globalMachineOutputRequested(
 		arguments[..<$0]
 	}
 	?? arguments[...]
+
 	var argumentValue: Bool?
+
 	for argument in relevantArguments {
 		switch argument {
 		case "--json":
@@ -167,6 +180,7 @@ internal func globalMachineOutputRequested(
 	if let argumentValue {
 		return argumentValue
 	}
+
 	return (try? environmentSwitch(
 		named: "FXCODEX_JSON",
 		in: environment
@@ -176,8 +190,9 @@ internal func globalMachineOutputRequested(
 
 internal func environmentSwitch(
 	named name: String,
-	in environment: [String: String] = ProcessInfo.processInfo.environment
+	in environment: [String: String]? = nil
 ) throws -> Bool? {
+	let environment = environment ?? currentEnvironment()
 	guard let value = environment[name], !value.isEmpty else { return nil }
 
 	switch value {
@@ -243,5 +258,6 @@ private func writeJSON<Value: Encodable>(
 ) throws {
 	var data: Data = try encodedJSON(value)
 	data.append(contentsOf: [0x0A])
+
 	try fileHandle.write(contentsOf: data)
 }

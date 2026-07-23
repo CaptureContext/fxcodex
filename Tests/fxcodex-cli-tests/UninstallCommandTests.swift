@@ -2,7 +2,8 @@ import ArgumentParser
 import Dependencies
 import FXCodexClient
 import Testing
-@testable import FXCodexCLI
+@testable
+import FXCodexCLI
 
 @Suite("Uninstall command")
 struct UninstallCommandTests {
