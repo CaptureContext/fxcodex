@@ -6,7 +6,7 @@ import FXCodexClient
 
 @main
 internal struct AppCommand: AsyncParsableCommand {
-	internal static let version: String = "0.2.0"
+	internal static let version: String = "0.2.1"
 	internal static let machineEncodingFailureResponse: String = """
 		{
 		  "api_version": 1,
@@ -51,11 +51,19 @@ internal struct AppCommand: AsyncParsableCommand {
 	internal init() {}
 
 	internal static func main() async {
+		var rawOutputRequested: Bool = false
+
 		do {
 			let command: any ParsableCommand = try await Self.asyncParseAsRoot()
+			rawOutputRequested = Self.rawOutputRequested(command)
 			let warnings: [FXCodexWarning] = try await Self.prepareForExecution(command)
 
-			if globalMachineOutputRequested() {
+			if rawOutputRequested {
+				for warning in warnings {
+					try printRawWarning(warning)
+				}
+
+			} else if globalMachineOutputRequested() {
 				for warning in warnings {
 					try printMachineWarning(warning)
 				}
@@ -69,7 +77,11 @@ internal struct AppCommand: AsyncParsableCommand {
 
 			try await Self.execute(command)
 		} catch {
-			guard globalMachineOutputRequested(), !(error is CleanExit) else {
+			guard
+				!rawOutputRequested,
+				globalMachineOutputRequested(),
+				!(error is CleanExit)
+			else {
 				Self.exit(withError: error)
 			}
 
@@ -85,13 +97,33 @@ internal struct AppCommand: AsyncParsableCommand {
 		}
 	}
 
+	internal static func rawOutputRequested(
+		_ command: any ParsableCommand,
+		arguments: [String] = .init(CommandLine.arguments.dropFirst())
+	) -> Bool {
+		guard
+			let paths = command as? WorkspaceCommand.Paths,
+			paths.printComponent != nil,
+			paths.json != true,
+			machineOutputArgumentValue(arguments: arguments) != true
+		else { return false }
+
+		return true
+	}
+
 	internal static func prepareForExecution(
 		_ command: any ParsableCommand
 	) async throws -> [FXCodexWarning] {
 		@Dependency(\.fxCodexClient)
 		var client: FXCodexClient
 
-		try await MigrationAssistant.prepareStorage(client: client)
+		let interactiveMigration: Bool = interactiveTerminalAvailable()
+		&& !globalMachineOutputRequested()
+		&& !Self.rawOutputRequested(command)
+		try await MigrationAssistant.prepareStorage(
+			client: client,
+			interactive: interactiveMigration
+		)
 		guard !(command is Self) else { return [] }
 		guard !(command is PreferencesCommand.List) else { return [] }
 		guard !(command is PreferencesCommand.Set) else { return [] }

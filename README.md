@@ -155,6 +155,7 @@ Inspect the current setup:
 
 ```sh
 fxcodex workspace list
+fxcodex workspace paths
 fxcodex status --all
 ```
 
@@ -186,6 +187,8 @@ Arguments after `--` are forwarded unchanged to `codex` or `codex exec`.
 | Task | Command |
 | --- | --- |
 | List workspaces | `fxcodex workspace list` |
+| Show workspace directories | `fxcodex workspace paths [name]` |
+| Print one workspace directory | `fxcodex workspace paths [name] --print <component>` |
 | Create a workspace | `fxcodex workspace create <name>` |
 | Create and select it | `fxcodex workspace create <name> --use` |
 | Create and open it | `fxcodex workspace create <name> --open` |
@@ -202,6 +205,20 @@ Both commands require confirmation and only operate on managed workspaces.
 
 Close a workspace's Codex app instance before renaming, erasing, or deleting
 it. The `primary` workspace cannot be renamed, erased, or deleted.
+
+`workspace paths` reports the workspace root, Codex home, and desktop-app user
+data directory. Omit the workspace name to choose interactively. All paths are
+shown by default; use `--no-workspace-root`, `--no-codex-home`, or
+`--no-user-data` to exclude individual paths. Use `--no-all` together with the
+positive flags to select multiple paths, or print one unlabeled path for shell
+composition:
+
+```sh
+codex_home="$(fxcodex workspace paths work --print codex-home)"
+fxcodex workspace paths work --no-all --codex-home --user-data
+```
+
+Raw components are `workspace-root`, `codex-home`, and `user-data`.
 
 ## App naming
 
@@ -274,9 +291,11 @@ fxcodex preferences set auto-update --disabled
 Patch policies stay within the anchor's major and minor line. Minor policies
 stay within its major line. Major and latest policies have no upper bound.
 
-Automatic updates apply only to an external `fxcodex` executable. Applications
-that bundle `fxcodex`, such as the companion Raycast extension, manage their
-bundled executable separately.
+Set `FXCODEX_DISABLE_AUTO_UPDATE=1` when a frontend pins a compatibility-tested
+executable and must prevent it from replacing itself. The companion Raycast
+extension sets this only for executables installed in its versioned extension
+support directory. User and custom installations continue to honor the CLI's
+automatic-update preference, while Homebrew controls its own upgrades.
 
 ## Integration attributes
 
@@ -338,6 +357,7 @@ integrations:
 ```sh
 fxcodex --json status --all
 FXCODEX_JSON=1 fxcodex workspace list
+fxcodex workspace paths work --json --no-user-data
 fxcodex integrations attributes get raycast --path script_commands --json
 fxcodex integrations raycast install script-command \
   --directory "$HOME/.config/raycast/script-commands" \
@@ -352,6 +372,14 @@ an integration identifier, and `attributes set` also requires a value. JSON
 integration identifier and removed path. API-owned keys use lower snake case;
 opaque integration attribute keys are preserved exactly, and integrations are
 encouraged to use lower snake case for them.
+
+`workspace paths` includes every path by default. Its inclusion flags default
+from `FXCODEX_WORKSPACE_PATHS_ALL`,
+`FXCODEX_WORKSPACE_PATHS_WORKSPACE_ROOT`,
+`FXCODEX_WORKSPACE_PATHS_CODEX_HOME`, and
+`FXCODEX_WORKSPACE_PATHS_USER_DATA`. As with status switches, `1` enables a
+path and `-1` disables it. `--print <component>` produces one raw filesystem
+path instead of JSON or labeled terminal output.
 
 ## Uninstalling
 
@@ -395,7 +423,10 @@ attributes. `runtime.json` contains transient application-instance records, and
 Some files are created only after their corresponding feature is used.
 
 The `primary` workspace has metadata under `workspaces/`, but continues to use
-Codex's normal data locations. Managed workspace directories contain
+Codex's normal data locations. Its Codex home defaults to `~/.codex`, and its
+desktop-app user data defaults to `~/Library/Application Support/Codex`.
+`CODEX_HOME` and `CODEX_ELECTRON_USER_DATA_PATH` override those defaults.
+Managed workspace directories contain
 account-specific Codex state; treat the complete support directory as private
 data and do not commit or share it.
 

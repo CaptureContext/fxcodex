@@ -35,6 +35,10 @@ let package = Package(
 			.upToNextMajor(from: "0.15.0")
 		),
 		.package(
+			url: "https://github.com/pointfreeco/swift-custom-dump.git",
+			.upToNextMajor(from: "1.6.1")
+		),
+		.package(
 			url: "https://github.com/onmyway133/Promptberry.git",
 			.upToNextMajor(from: "1.0.0")
 		),
@@ -109,8 +113,8 @@ let package = Package(
 					condition: nil
 				),
 				.product(
-					name: "Dependencies",
-					package: "swift-dependencies"
+					name: "CustomDump",
+					package: "swift-custom-dump"
 				),
 			],
 			path: "Tests/fxcodex-cli-tests"

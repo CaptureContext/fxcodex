@@ -9,6 +9,7 @@ Pass `--json` before the subcommand or directly to a supported command:
 ```sh
 fxcodex --json status
 fxcodex workspace list --json
+fxcodex workspace paths work --json
 fxcodex open work --json
 fxcodex open --workspace-id 00000000-0000-0000-0000-000000000001 --json
 fxcodex delete work personal --yes --json
@@ -17,11 +18,11 @@ fxcodex delete work personal --yes --json
 Set `FXCODEX_JSON=1` to make JSON the default. An explicit `--no-json`
 overrides the environment for a single invocation.
 
-Frontends that ship a fixed, compatibility-tested binary should also set
+Frontends that select a fixed, compatibility-tested executable should also set
 `FXCODEX_DISABLE_AUTO_UPDATE=1`. This keeps automatic application renaming
-enabled while preventing the bundled executable from replacing itself. An
-external user-managed binary can omit the variable and follow the configured
-automatic-update preference normally.
+enabled while preventing that executable from replacing itself. A user-managed
+executable can omit the variable and follow the configured automatic-update
+preference normally.
 
 Successful responses are written to standard output:
 
@@ -76,6 +77,7 @@ The machine interface is available for:
 - `rename`
 - `update`
 - `workspace list`
+- `workspace paths`
 - `workspace create`
 - `workspace rename`
 - `workspace use` and its root `use` alias
@@ -90,11 +92,12 @@ The machine interface is available for:
 
 JSON mode never presents an interactive prompt. `use` requires a workspace
 name. `delete` and `erase` require at least one workspace name and `--yes`.
-`open` without a name opens or focuses the current workspace. Every integration
-attribute command requires an explicit integration identifier, and `set` also
-requires an explicit value. `integrations raycast install` requires an explicit
-`app` or `script-command` component. Script Command installation also requires
-`--directory` unless an installed configuration already records the directory.
+`open` and `workspace paths` without a name use the current workspace. Every
+integration attribute command requires an explicit integration identifier, and
+`set` also requires an explicit value. `integrations raycast install` requires
+an explicit `app` or `script-command` component. Script Command installation
+also requires `--directory` unless an installed configuration already records
+the directory.
 
 ## Stable workspace identities
 
@@ -114,7 +117,41 @@ fxcodex open \
 ```
 
 The ID and workspace name are mutually exclusive for `open`. Other workspace
-mutation commands continue to accept names in 0.2.0.
+mutation commands continue to accept names in 0.2.1.
+
+`workspace paths` also accepts either a workspace name or `--workspace-id`.
+Its response identifies the selected workspace and includes
+`workspace_root_url`, `codex_home_url`, and `user_data_url` by default:
+
+```json
+{
+  "api_version": 1,
+  "ok": true,
+  "data": {
+    "workspace_id": "00000000-0000-0000-0000-000000000001",
+    "workspace_name": "primary",
+    "workspace_kind": "primary",
+    "workspace_root_url": "file:///Users/me/Library/Application%20Support/fxcodex/workspaces/00000000-0000-0000-0000-000000000001/",
+    "codex_home_url": "file:///Users/me/.codex/",
+    "user_data_url": "file:///Users/me/Library/Application%20Support/Codex/"
+  }
+}
+```
+
+Every path is enabled by default. Frontends can omit fields with
+`--no-workspace-root`, `--no-codex-home`, or `--no-user-data`, or combine
+`--no-all` with positive inclusion flags. Equivalent environment switches are
+`FXCODEX_WORKSPACE_PATHS_ALL`, `FXCODEX_WORKSPACE_PATHS_WORKSPACE_ROOT`,
+`FXCODEX_WORKSPACE_PATHS_CODEX_HOME`, and
+`FXCODEX_WORKSPACE_PATHS_USER_DATA`. A scoped command flag overrides its
+environment value, and a scoped environment value overrides the all-paths
+setting.
+
+For shell composition, `--print workspace-root`, `--print codex-home`, or
+`--print user-data` writes exactly one filesystem path and a trailing newline
+to standard output. It cannot be combined with explicit `--json` and takes
+precedence over `FXCODEX_JSON`. Callers should provide a workspace name or ID
+when they must avoid interactive selection.
 
 Integration attributes expose frontend-owned JSON stored in the shared
 configuration:
@@ -177,13 +214,13 @@ Set a scoped environment variable to `-1` to exclude that section even when
 all sections are enabled. On the command line, use the corresponding
 `--no-list-...` flag.
 
-The following commands are intentionally outside the 0.2.0 machine API:
+The following commands are intentionally outside the 0.2.1 machine API:
 
 - `cli` and `exec` replace the fxcodex process with Codex CLI, whose session or
   output may be interactive.
 - The root `uninstall` command removes the current executable.
 - `integrations raycast sync` and `integrations raycast uninstall` are
-  terminal-only maintenance commands in 0.2.0.
+  terminal-only maintenance commands in 0.2.1.
 
 A frontend should use the supported workspace and status commands and refresh
 its state after mutations. Raycast Script Commands remain an optional

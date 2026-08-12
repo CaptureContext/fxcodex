@@ -154,6 +154,20 @@ internal func globalMachineOutputRequested(
 	environment: [String: String]? = nil
 ) -> Bool {
 	let environment = environment ?? currentEnvironment()
+	if let argumentValue = machineOutputArgumentValue(arguments: arguments) {
+		return argumentValue
+	}
+
+	return (try? environmentSwitch(
+		named: "FXCODEX_JSON",
+		in: environment
+	))
+	?? false
+}
+
+internal func machineOutputArgumentValue(
+	arguments: [String] = .init(CommandLine.arguments.dropFirst())
+) -> Bool? {
 	let passthroughCommandIndex: Int? = arguments.firstIndex { argument in
 		argument == "cli" || argument == "exec"
 	}
@@ -177,15 +191,7 @@ internal func globalMachineOutputRequested(
 		}
 	}
 
-	if let argumentValue {
-		return argumentValue
-	}
-
-	return (try? environmentSwitch(
-		named: "FXCODEX_JSON",
-		in: environment
-	))
-	?? false
+	return argumentValue
 }
 
 internal func environmentSwitch(
@@ -249,6 +255,14 @@ internal func printMachineWarning(
 	try writeJSON(
 		MachineWarningResponse(warning: warning),
 		to: .standardError
+	)
+}
+
+internal func printRawWarning(
+	_ warning: FXCodexWarning
+) throws {
+	try FileHandle.standardError.write(
+		contentsOf: Data("Warning: \(warning.message)\n".utf8)
 	)
 }
 

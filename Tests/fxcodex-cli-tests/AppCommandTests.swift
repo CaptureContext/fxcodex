@@ -35,6 +35,37 @@ struct AppCommandTests {
 		#expect(open.workspaceName == "work")
 	}
 
+	@Test("Parses the workspace paths subcommand from the root")
+	func workspacePathsSubcommand() async throws {
+		let command: any ParsableCommand = try AppCommand.parseAsRoot([
+			"workspace",
+			"paths",
+			"work",
+			"--print",
+			"codex-home",
+		])
+		let paths: AppCommand.WorkspaceCommand.Paths = try #require(
+			command as? AppCommand.WorkspaceCommand.Paths
+		)
+
+		#expect(paths.workspaceName == "work")
+		#expect(paths.printComponent == .codexHome)
+	}
+
+	@Test("Raw workspace path output overrides inherited JSON mode")
+	func rawWorkspacePathOutput() async throws {
+		let command: any ParsableCommand = try AppCommand.parseAsRoot([
+			"workspace",
+			"paths",
+			"work",
+			"--print",
+			"codex-home",
+		])
+
+		#expect(AppCommand.rawOutputRequested(command, arguments: []))
+		#expect(!AppCommand.rawOutputRequested(command, arguments: ["--json"]))
+	}
+
 	@Test("Parses workspace command aliases from the root")
 	func workspaceAliases() async throws {
 		let use: any ParsableCommand = try AppCommand.parseAsRoot([

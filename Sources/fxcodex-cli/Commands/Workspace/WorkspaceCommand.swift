@@ -12,6 +12,7 @@ extension AppCommand {
 				Create.self,
 				Delete.self,
 				Erase.self,
+				Paths.self,
 				Rename.self,
 				Use.self,
 				OpenCommand.self,

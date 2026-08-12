@@ -7,6 +7,43 @@ import FXCodexClient
 
 @Suite("Workspace client")
 struct WorkspaceClientTests {
+	@Test("Primary workspace exposes its effective directories")
+	func primaryDirectories() async throws {
+		let fixture: ClientTestFixture = try .init()
+		let primaryCodexHomeURL: URL = fixture.rootURL.appending(
+			path: "primary-codex-home",
+			directoryHint: .isDirectory
+		)
+		let primaryUserDataURL: URL = fixture.rootURL.appending(
+			path: "primary-user-data",
+			directoryHint: .isDirectory
+		)
+		defer { fixture.remove() }
+
+		try await withDependencies {
+			$0.context = .live
+			$0._fxcodexPaths = .init(
+				rootURL: fixture.rootURL,
+				primaryCodexHomeURL: primaryCodexHomeURL,
+				primaryUserDataURL: primaryUserDataURL
+			)
+		} operation: {
+			@Dependency(\.fxCodexClient)
+			var client: FXCodexClient
+
+			let primary: Workspace = try await client.currentWorkspace()
+			let rootURL: URL = try #require(primary.rootURL)
+
+			#expect(primary.kind == .primary)
+			#expect(rootURL.lastPathComponent == primary.id.rawValue)
+			#expect(FileManager.default.fileExists(
+				atPath: rootURL.appending(path: "workspace.json").path
+			))
+			#expect(primary.codexHomeURL == primaryCodexHomeURL.standardizedFileURL)
+			#expect(primary.userDataURL == primaryUserDataURL.standardizedFileURL)
+		}
+	}
+
 	@Test("Creates, selects, renames, and deletes a workspace")
 	func lifecycle() async throws {
 		let fixture: ClientTestFixture = try .init()

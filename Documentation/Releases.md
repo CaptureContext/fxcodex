@@ -74,8 +74,9 @@ make release
 
 ## Universal executable
 
-The Raycast extension embeds a universal executable instead of either
-architecture-specific updater artifact. Run:
+The universal executable runs natively on both Apple silicon and Intel Macs and
+is the default artifact for manual and frontend-managed installations. Build it
+locally with:
 
 ```sh
 make universal
@@ -96,12 +97,12 @@ host architecture while Xcode 27 cross-compiles the Intel product slice. Xcode
 is neither required nor supported.
 
 Override `OUTPUT_PATH` when invoking the script directly to place the binary
-elsewhere, including the Raycast extension's `assets/bin` directory. The
-universal artifact is the default choice for manual installation and extension
-embedding. The self-updater preserves universal installations by comparing the
-installed executable with the current release's universal checksum. A match
-selects the next universal artifact; otherwise it selects the artifact for the
-running architecture.
+elsewhere. The companion Raycast extension does not bundle this output; its
+installer downloads the universal artifact from a selected GitHub Release into
+the user, extension-support, or custom destination. The self-updater preserves
+universal installations by comparing the installed executable with the current
+release's universal checksum. A match selects the next universal artifact;
+otherwise it selects the artifact for the running architecture.
 
 Draft releases are ignored. The minor and major channels ignore prereleases;
 the latest channel includes them. The updater downloads the selected binary and

@@ -3,6 +3,8 @@ import Dependencies
 
 public struct FXCodexPaths: Sendable {
 	public let rootURL: URL
+	public let primaryCodexHomeURL: URL
+	public let primaryUserDataURL: URL
 	public let configurationURL: URL
 	public let instancesURL: URL
 	public let migrationURL: URL
@@ -13,7 +15,28 @@ public struct FXCodexPaths: Sendable {
 	public let workspacesURL: URL
 
 	public init(rootURL: URL) {
+		self.init(
+			rootURL: rootURL,
+			primaryCodexHomeURL: Self.primaryCodexHomeURL(
+				fileManager: .default,
+				environment: ProcessInfo.processInfo.environment
+			),
+			primaryUserDataURL: Self.primaryUserDataURL(
+				fileManager: .default,
+				environment: ProcessInfo.processInfo.environment
+			)
+		)
+	}
+
+	@_spi(Internals)
+	public init(
+		rootURL: URL,
+		primaryCodexHomeURL: URL,
+		primaryUserDataURL: URL
+	) {
 		self.rootURL = rootURL.standardizedFileURL
+		self.primaryCodexHomeURL = primaryCodexHomeURL.standardizedFileURL
+		self.primaryUserDataURL = primaryUserDataURL.standardizedFileURL
 		self.configurationURL = self.rootURL.appending(
 			path: "configuration.json",
 			directoryHint: .notDirectory
@@ -49,7 +72,38 @@ public struct FXCodexPaths: Sendable {
 	}
 
 	public static func create(fileManager: FileManager = .default) -> Self {
-		let applicationSupportURL: URL = fileManager.urls(
+		self.create(
+			fileManager: fileManager,
+			environment: ProcessInfo.processInfo.environment
+		)
+	}
+
+	@_spi(Internals)
+	public static func create(
+		fileManager: FileManager,
+		environment: [String: String]
+	) -> Self {
+		let applicationSupportURL: URL = self.applicationSupportURL(fileManager: fileManager)
+		return Self(
+			rootURL: applicationSupportURL.appending(
+				path: "fxcodex",
+				directoryHint: .isDirectory
+			),
+			primaryCodexHomeURL: self.primaryCodexHomeURL(
+				fileManager: fileManager,
+				environment: environment
+			),
+			primaryUserDataURL: self.primaryUserDataURL(
+				fileManager: fileManager,
+				environment: environment
+			)
+		)
+	}
+}
+
+private extension FXCodexPaths {
+	static func applicationSupportURL(fileManager: FileManager) -> URL {
+		fileManager.urls(
 			for: .applicationSupportDirectory,
 			in: .userDomainMask
 		).first
@@ -57,11 +111,42 @@ public struct FXCodexPaths: Sendable {
 			path: "Library/Application Support",
 			directoryHint: .isDirectory
 		)
+	}
 
-		return Self(rootURL: applicationSupportURL.appending(
-			path: "fxcodex",
+	static func primaryCodexHomeURL(
+		fileManager: FileManager,
+		environment: [String: String]
+	) -> URL {
+		self.environmentDirectoryURL(named: "CODEX_HOME", environment: environment)
+		?? fileManager.homeDirectoryForCurrentUser.appending(
+			path: ".codex",
 			directoryHint: .isDirectory
-		))
+		)
+	}
+
+	static func primaryUserDataURL(
+		fileManager: FileManager,
+		environment: [String: String]
+	) -> URL {
+		self.environmentDirectoryURL(
+			named: "CODEX_ELECTRON_USER_DATA_PATH",
+			environment: environment
+		)
+		?? self.applicationSupportURL(fileManager: fileManager).appending(
+			path: "Codex",
+			directoryHint: .isDirectory
+		)
+	}
+
+	static func environmentDirectoryURL(
+		named name: String,
+		environment: [String: String]
+	) -> URL? {
+		guard let path = environment[name], !path.isEmpty else { return nil }
+		return URL(
+			filePath: NSString(string: path).expandingTildeInPath,
+			directoryHint: .isDirectory
+		).standardizedFileURL
 	}
 }
 

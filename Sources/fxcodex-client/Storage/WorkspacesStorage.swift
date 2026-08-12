@@ -332,9 +332,9 @@ private extension WorkspacesStorage {
 				id: metadata.id,
 				name: metadata.name,
 				kind: metadata.kind,
-				rootURL: nil,
-				codexHomeURL: nil,
-				userDataURL: nil,
+				rootURL: rootURL,
+				codexHomeURL: self.paths.primaryCodexHomeURL,
+				userDataURL: self.paths.primaryUserDataURL,
 				integrations: integrations
 			)
 		}
