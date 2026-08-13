@@ -315,10 +315,22 @@ otherwise, `set` stores the input as a string.
 
 ## Raycast integration
 
+Run either command without a trailing action to choose interactively:
+
+```sh
+fxcodex integrations
+fxcodex integrations raycast
+```
+
+The Raycast menu offers status and installation actions. Installation then
+offers Raycast, Raycast Beta, the fxcodex extension, and the deprecated Script
+Commands integration.
+
 ### Script Commands
 
-`fxcodex` can install and maintain Raycast Script Commands for quickly opening
-workspaces. Start the guided setup with:
+Raycast Script Commands are deprecated in favor of the extension, but `fxcodex`
+continues to install and maintain them for quickly opening workspaces. Choose a
+component interactively with:
 
 ```sh
 fxcodex integrations raycast install
@@ -345,9 +357,17 @@ later-selected workspaces are not added automatically. Reinstall without
 ### Extension
 
 A companion Raycast extension provides workspace navigation, management,
-custom icons, executable selection, and preferences. It is prepared separately
-for [Raycast Store submission](https://github.com/raycast/extensions/pull/29538); the Script Commands
-above are available without it.
+custom icons, executable selection, and preferences. Install it with:
+
+```sh
+fxcodex integrations raycast install extension
+```
+
+When both Raycast and Raycast Beta are installed, `fxcodex` asks which edition
+should open the extension deep link. When neither is installed, the guided flow
+recommends installing Raycast before offering the browser as a fallback. Use
+`--open-in-browser` to open the [fxcodex Raycast Store page](https://www.raycast.com/maximkrouk/fxcodex)
+directly. The Script Commands above remain available without the extension.
 
 ## Machine-readable output
 

@@ -12,7 +12,7 @@ internal struct TerminalPromptOption: Equatable, Sendable {
 	internal init(
 		value: String,
 		label: String,
-		hint: String?
+		hint: String? = nil
 	) {
 		self.value = value
 		self.label = label

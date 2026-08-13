@@ -28,16 +28,20 @@ extension AppCommand {
 					"Choose an integration area:",
 					[
 						.init(value: "attributes", label: "Attributes", hint: "Read or modify integration data"),
-						.init(value: "raycast", label: "Raycast", hint: "Show Raycast integration status"),
+						.init(value: "raycast", label: "Raycast", hint: "Manage Raycast integration components"),
 					]
 				)
 			else { return }
 
 			switch area {
 			case "attributes":
-				try await Attributes().run()
+				let command: Attributes = try .parse([])
+				try await command.run()
+
 			case "raycast":
-				try await Raycast.Status().run()
+				let command: Raycast = try .parse([])
+				try await command.run()
+
 			default:
 				throw ValidationError("Unsupported integration area.")
 			}
@@ -319,9 +323,39 @@ extension AppCommand.IntegrationsCommand {
 				Sync.self,
 				Uninstall.self,
 			],
-			defaultSubcommand: Status.self
+			defaultSubcommand: nil
 		)
 
 		internal init() {}
+
+		internal func run() async throws {
+			guard !globalMachineOutputRequested() else {
+				throw ValidationError("Choose status or install when using --json.")
+			}
+
+			@Dependency(\._fxcodexTerminalPrompts)
+			var prompts: TerminalPromptsClient
+
+			guard let action = try prompts.select(
+				"Choose a Raycast action:",
+				[
+					.init(value: "status", label: "Status", hint: "Show installed components"),
+					.init(value: "install", label: "Install", hint: "Install a component"),
+				]
+			) else { return }
+
+			switch action {
+			case "status":
+				let command: Status = try .parse([])
+				try await command.run()
+
+			case "install":
+				let command: Install = try .parse([])
+				try await command.run()
+
+			default:
+				throw ValidationError("Unsupported Raycast action.")
+			}
+		}
 	}
 }
