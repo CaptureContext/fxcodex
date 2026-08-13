@@ -5,8 +5,13 @@ import Foundation
 import FXCodexClient
 
 extension AppCommand.IntegrationsCommand.Raycast {
-	internal enum Component: String, ExpressibleByArgument {
+	internal enum Component: String, CaseIterable, ExpressibleByArgument {
 		case app
+		case scriptCommand = "script-command"
+		case raycastExtension = "extension"
+	}
+
+	internal enum MaintenanceComponent: String, CaseIterable, ExpressibleByArgument {
 		case scriptCommand = "script-command"
 	}
 
@@ -68,10 +73,10 @@ extension AppCommand.IntegrationsCommand.Raycast {
 extension AppCommand.IntegrationsCommand.Raycast {
 	internal struct Install: AsyncParsableCommand {
 		internal static let configuration: CommandConfiguration = .init(
-			abstract: "Install Raycast or its fxcodex Script Commands."
+			abstract: "Install Raycast or an fxcodex integration component."
 		)
 
-		@Argument(help: "Component to install. Omit to start guided setup.")
+		@Argument(help: "Component to install; script-command is deprecated. Omit to choose interactively.")
 		internal var component: Component?
 
 		@Flag(help: "Target Raycast Beta instead of stable Raycast.")
@@ -82,6 +87,9 @@ extension AppCommand.IntegrationsCommand.Raycast {
 
 		@Flag(help: "Generate only the command for the workspace that is currently selected.")
 		internal var currentOnly: Bool = false
+
+		@Flag(help: "Open the fxcodex extension page in the default browser.")
+		internal var openInBrowser: Bool = false
 
 		@Flag(name: .shortAndLong, help: "Accept confirmation prompts.")
 		internal var yes: Bool = false
@@ -99,10 +107,19 @@ extension AppCommand.IntegrationsCommand.Raycast {
 			@Dependency(\.fxCodexClient)
 			var client: FXCodexClient
 
+			@Dependency(\._fxcodexExternalURLOpener)
+			var externalURLOpener: ExternalURLOpenerClient
+
+			@Dependency(\._fxcodexTerminalPrompts)
+			var prompts: TerminalPromptsClient
+
 			let json = machineOutputRequested(self.json)
 
 			guard !json || self.component != nil else {
 				throw ValidationError("An integration component is required when using --json.")
+			}
+			guard !self.openInBrowser || self.component == .raycastExtension else {
+				throw ValidationError("--open-in-browser is only available for the extension component.")
 			}
 
 			let reporter: TerminalReporter = await .init(assumeYes: self.yes)
@@ -126,6 +143,24 @@ extension AppCommand.IntegrationsCommand.Raycast {
 					))
 				}
 
+			case .raycastExtension:
+				guard let result = try await self.installExtension(
+					client: client,
+					externalURLOpener: externalURLOpener,
+					prompts: prompts,
+					reporter: json ? nil : reporter,
+					json: json
+				) else { return }
+
+				if json {
+					try printMachineResponse(Output(
+						component: Component.raycastExtension.rawValue,
+						outcome: result.outcome,
+						application: result.application,
+						scriptCommands: nil
+					))
+				}
+
 			case .scriptCommand:
 				let status = try await self.installScriptCommands(
 					client: client,
@@ -143,24 +178,62 @@ extension AppCommand.IntegrationsCommand.Raycast {
 				}
 
 			case nil:
-				let applicationStatus: RaycastApplicationStatus = try await client.integrations.raycast.applicationStatus(
-					edition
-				)
+				guard let rawComponent = try prompts.select(
+					"Choose a component to install:",
+					[
+						.init(
+							value: InteractiveComponent.app.rawValue,
+							label: "Raycast",
+						),
+						.init(
+							value: InteractiveComponent.betaApp.rawValue,
+							label: "Raycast Beta",
+						),
+						.init(
+							value: InteractiveComponent.scriptCommand.rawValue,
+							label: "Script Commands (deprecated)",
+							hint: "Use the extension when possible"
+						),
+						.init(
+							value: InteractiveComponent.raycastExtension.rawValue,
+							label: "Extension",
+							hint: "Install the fxcodex Raycast extension"
+						),
+					]
+				) else { return }
 
-				if applicationStatus.applicationURL == nil {
-					guard await reporter.confirm("Install \(edition.displayName)?") else { return }
+				guard let component = InteractiveComponent(rawValue: rawComponent)
+				else { throw ValidationError("Unsupported Raycast installation component.") }
 
+				switch component {
+				case .app:
 					_ = try await self.installApplication(
-						edition: edition,
+						edition: .stable,
 						client: client,
 						reporter: reporter,
 						suppressOutput: false
 					)
-				}
 
-				if await reporter.confirm("Install fxcodex Script Commands for Raycast?") {
+				case .betaApp:
+					_ = try await self.installApplication(
+						edition: .beta,
+						client: client,
+						reporter: reporter,
+						suppressOutput: false
+					)
+
+				case .scriptCommand:
 					_ = try await self.installScriptCommands(
 						client: client,
+						reporter: reporter,
+						json: false
+					)
+
+				case .raycastExtension:
+					_ = try await self.installExtension(
+						client: client,
+						externalURLOpener: externalURLOpener,
+						prompts: prompts,
 						reporter: reporter,
 						json: false
 					)
@@ -177,7 +250,7 @@ extension AppCommand.IntegrationsCommand.Raycast {
 		)
 
 		@Argument(help: "Component to synchronize. Omit to choose interactively.")
-		internal var component: Component?
+		internal var component: MaintenanceComponent?
 
 		internal init() {}
 
@@ -187,14 +260,11 @@ extension AppCommand.IntegrationsCommand.Raycast {
 			@Dependency(\._fxcodexTerminalPrompts)
 			var prompts: TerminalPromptsClient
 
-			guard let component = try AppCommand.IntegrationsCommand.Raycast.resolveMaintenanceComponent(
+			guard try AppCommand.IntegrationsCommand.Raycast.resolveMaintenanceComponent(
 				self.component,
 				action: "synchronize",
 				prompts: prompts
-			) else { return }
-
-			guard component == .scriptCommand
-			else { throw ValidationError("The app component cannot be synchronized by fxcodex.") }
+			) != nil else { return }
 
 			@Dependency(\.fxCodexClient)
 			var client: FXCodexClient
@@ -214,7 +284,7 @@ extension AppCommand.IntegrationsCommand.Raycast {
 		)
 
 		@Argument(help: "Component to uninstall. Omit to choose interactively.")
-		internal var component: Component?
+		internal var component: MaintenanceComponent?
 
 		@Flag(name: .shortAndLong, help: "Confirm without prompting.")
 		internal var yes: Bool = false
@@ -227,15 +297,11 @@ extension AppCommand.IntegrationsCommand.Raycast {
 			@Dependency(\._fxcodexTerminalPrompts)
 			var prompts: TerminalPromptsClient
 
-			guard let component = try AppCommand.IntegrationsCommand.Raycast.resolveMaintenanceComponent(
+			guard try AppCommand.IntegrationsCommand.Raycast.resolveMaintenanceComponent(
 				self.component,
 				action: "uninstall",
 				prompts: prompts
-			) else { return }
-
-			guard component == .scriptCommand else {
-				throw ValidationError("fxcodex does not uninstall the Raycast application.")
-			}
+			) != nil else { return }
 
 			let reporter: TerminalReporter = await .init(assumeYes: self.yes)
 
@@ -267,10 +333,19 @@ extension AppCommand.IntegrationsCommand.Raycast.Status {
 }
 
 extension AppCommand.IntegrationsCommand.Raycast.Install {
+	private enum InteractiveComponent: String {
+		case app
+		case betaApp = "app-beta"
+		case scriptCommand = "script-command"
+		case raycastExtension = "extension"
+	}
+
 	private enum Outcome: String, Encodable {
 		case alreadyInstalled = "already-installed"
-		case installed
 		case downloadOpened = "download-opened"
+		case extensionOpened = "extension-opened"
+		case installed
+		case storePageOpened = "store-page-opened"
 	}
 
 	private struct Output: Encodable {
@@ -278,6 +353,19 @@ extension AppCommand.IntegrationsCommand.Raycast.Install {
 		let outcome: Outcome
 		let application: RaycastApplicationStatus?
 		let scriptCommands: RaycastScriptCommandStatus?
+	}
+
+	private struct ExtensionInstallationResult {
+		let outcome: Outcome
+		let application: RaycastApplicationStatus?
+
+		init(
+			outcome: Outcome,
+			application: RaycastApplicationStatus?
+		) {
+			self.outcome = outcome
+			self.application = application
+		}
 	}
 
 	@MainActor
@@ -324,6 +412,134 @@ extension AppCommand.IntegrationsCommand.Raycast.Install {
 	}
 
 	@MainActor
+	private func installExtension(
+		client: FXCodexClient,
+		externalURLOpener: ExternalURLOpenerClient,
+		prompts: TerminalPromptsClient,
+		reporter: TerminalReporter?,
+		json: Bool
+	) async throws -> ExtensionInstallationResult? {
+		guard
+			let deepLink = URL(string: "raycast://extensions/maximkrouk/fxcodex"),
+			let storePageURL = URL(string: "https://www.raycast.com/maximkrouk/fxcodex")
+		else { throw CocoaError(.fileNoSuchFile) }
+
+		if self.openInBrowser {
+			try externalURLOpener.openInBrowser(storePageURL)
+			reporter?.success("Opened the fxcodex extension page in your browser.")
+			return .init(outcome: .storePageOpened, application: nil)
+		}
+
+		var installedApplications: [RaycastApplicationStatus] = []
+
+		for edition in RaycastEdition.allCases {
+			let status: RaycastApplicationStatus = try await client.integrations.raycast.applicationStatus(
+				edition
+			)
+			if status.applicationURL != nil {
+				installedApplications.append(status)
+			}
+		}
+
+		let selectedApplication: RaycastApplicationStatus
+
+		if self.beta {
+			guard let beta = installedApplications.first(where: { $0.edition == .beta }) else {
+				throw ValidationError(
+					"Raycast Beta is not installed. Install it first or use --open-in-browser."
+				)
+			}
+			selectedApplication = beta
+
+		} else if installedApplications.count == 1, let application = installedApplications.first {
+			selectedApplication = application
+
+		} else if installedApplications.count > 1 {
+			if json {
+				guard let stable = installedApplications.first(where: { $0.edition == .stable })
+				else { throw ValidationError("Raycast is not installed.") }
+				selectedApplication = stable
+
+			} else {
+				let options: [TerminalPromptOption] = installedApplications.map { application in
+					.init(
+						value: application.edition.rawValue,
+						label: application.edition.displayName,
+						hint: application.version
+					)
+				}
+
+				guard let selection = try prompts.select(
+					"Open the fxcodex extension with:",
+					options
+				) else { return nil }
+				guard
+					let edition = RaycastEdition(rawValue: selection),
+					let application = installedApplications.first(where: { $0.edition == edition })
+				else { throw ValidationError("Unsupported Raycast edition.") }
+
+				selectedApplication = application
+			}
+
+		} else {
+			if !self.yes {
+				guard !json else {
+					throw ValidationError(
+						"Raycast is not installed. Pass --yes to install it or use --open-in-browser."
+					)
+				}
+
+				guard let selection = try prompts.select(
+					"Raycast is not installed:",
+					[
+						.init(
+							value: "install",
+							label: "Install Raycast",
+							hint: "Recommended · then open the fxcodex extension"
+						),
+						.init(
+							value: "browser",
+							label: "Open in Browser",
+							hint: "View the extension without installing Raycast"
+						),
+					]
+				) else { return nil }
+
+				if selection == "browser" {
+					try externalURLOpener.openInBrowser(storePageURL)
+					reporter?.success("Opened the fxcodex extension page in your browser.")
+					return .init(outcome: .storePageOpened, application: nil)
+				}
+
+				guard selection == "install"
+				else { throw ValidationError("Unsupported extension installation choice.") }
+			}
+
+			let installation = try await self.installApplication(
+				edition: .stable,
+				client: client,
+				reporter: reporter,
+				suppressOutput: json
+			)
+			guard installation.status.applicationURL != nil else {
+				throw ValidationError("Raycast must finish installing before the extension can be opened.")
+			}
+			selectedApplication = installation.status
+		}
+
+		guard let applicationURL = selectedApplication.applicationURL
+		else { throw ValidationError("The selected Raycast application could not be found.") }
+
+		try await externalURLOpener.openInApplication(deepLink, applicationURL)
+		reporter?.success("Opened the fxcodex extension in \(selectedApplication.edition.displayName).")
+
+		return .init(
+			outcome: .extensionOpened,
+			application: selectedApplication
+		)
+	}
+
+	@MainActor
 	private func installScriptCommands(
 		client: FXCodexClient,
 		reporter: TerminalReporter?,
@@ -361,24 +577,24 @@ extension AppCommand.IntegrationsCommand.Raycast.Install {
 
 extension AppCommand.IntegrationsCommand.Raycast {
 	fileprivate static func resolveMaintenanceComponent(
-		_ provided: Component?,
+		_ provided: MaintenanceComponent?,
 		action: String,
 		prompts: TerminalPromptsClient
-	) throws -> Component? {
+	) throws -> MaintenanceComponent? {
 		if let provided { return provided }
 
 		guard let selected = try prompts.select(
 			"Select a component to \(action):",
 			[
 				.init(
-					value: Component.scriptCommand.rawValue,
+					value: MaintenanceComponent.scriptCommand.rawValue,
 					label: "Script Commands",
 					hint: nil
 				),
 			]
 		) else { return nil }
 
-		guard let component = Component(rawValue: selected) else {
+		guard let component = MaintenanceComponent(rawValue: selected) else {
 			throw ValidationError("Unsupported Raycast integration component.")
 		}
 

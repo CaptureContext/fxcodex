@@ -95,9 +95,11 @@ name. `delete` and `erase` require at least one workspace name and `--yes`.
 `open` and `workspace paths` without a name use the current workspace. Every
 integration attribute command requires an explicit integration identifier, and
 `set` also requires an explicit value. `integrations raycast install` requires
-an explicit `app` or `script-command` component. Script Command installation
-also requires `--directory` unless an installed configuration already records
-the directory.
+an explicit `app`, `extension`, or `script-command` component. Script Command
+installation also requires `--directory` unless an installed configuration
+already records the directory; this component is deprecated in favor of the
+extension. Extension installation requires `--yes` when Raycast is absent, or
+`--open-in-browser` to bypass Raycast installation.
 
 ## Stable workspace identities
 
@@ -117,7 +119,7 @@ fxcodex open \
 ```
 
 The ID and workspace name are mutually exclusive for `open`. Other workspace
-mutation commands continue to accept names in 0.2.1.
+mutation commands continue to accept names in 0.3.0.
 
 `workspace paths` also accepts either a workspace name or `--workspace-id`.
 Its response identifies the selected workspace and includes
@@ -172,14 +174,17 @@ resulting component status:
 
 ```sh
 fxcodex integrations raycast install app --json
+fxcodex integrations raycast install extension --open-in-browser --json
 fxcodex integrations raycast install script-command \
   --directory "$HOME/.config/raycast/script-commands" \
   --json
 ```
 
 Application outcomes are `already-installed`, `installed`, or
-`download-opened`. Script Command installation returns `installed` together
-with `script_commands`.
+`download-opened`. Extension installation returns `extension-opened` when its
+Raycast deep link is opened or `store-page-opened` when the browser is used.
+Script Command installation returns `installed` together with
+`script_commands`.
 
 `rename` requests the `Codex.app` name and returns a
 `CodexApplicationRenameResult`. `rename --undo` requests `ChatGPT.app`. The
@@ -214,13 +219,13 @@ Set a scoped environment variable to `-1` to exclude that section even when
 all sections are enabled. On the command line, use the corresponding
 `--no-list-...` flag.
 
-The following commands are intentionally outside the 0.2.1 machine API:
+The following commands are intentionally outside the 0.3.0 machine API:
 
 - `cli` and `exec` replace the fxcodex process with Codex CLI, whose session or
   output may be interactive.
 - The root `uninstall` command removes the current executable.
 - `integrations raycast sync` and `integrations raycast uninstall` are
-  terminal-only maintenance commands in 0.2.1.
+  terminal-only maintenance commands in 0.3.0.
 
 A frontend should use the supported workspace and status commands and refresh
 its state after mutations. Raycast Script Commands remain an optional

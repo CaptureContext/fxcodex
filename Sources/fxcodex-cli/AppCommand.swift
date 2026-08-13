@@ -6,7 +6,7 @@ import FXCodexClient
 
 @main
 internal struct AppCommand: AsyncParsableCommand {
-	internal static let version: String = "0.2.1"
+	internal static let version: String = "0.3.0"
 	internal static let machineEncodingFailureResponse: String = """
 		{
 		  "api_version": 1,
