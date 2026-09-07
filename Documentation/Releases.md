@@ -27,9 +27,9 @@ Run the `Release` workflow manually from the `main` branch and enter the release
 version. The workflow pins every job to that commit, resolves dependencies
 once, requires both architecture jobs to use that exact `Package.resolved`,
 tests and builds natively on Apple silicon and Intel runners, and combines those
-exact binaries into the universal executable. The protected `release`
-environment then provides the Developer ID and App Store Connect credentials
-used to sign and notarize all three executables. Checksums are generated after
+exact binaries into the universal executable. The publish job uses the
+`release` environment and shared CaptureContext organization credentials
+to sign and notarize all three executables. Checksums are generated after
 signing and verified. Only after every check succeeds does the workflow create
 the tag and publish the GitHub Release together. Before running the workflow:
 
@@ -43,13 +43,22 @@ command-line executables cannot carry a stapled ticket, so Gatekeeper retrieves
 their notarization tickets online using the signed code hashes. The workflow
 verifies the signatures and online tickets before publishing any assets.
 
-The `release` GitHub environment must define these environment secrets:
+Grant `CaptureContext/fxcodex` access to these organization Actions secrets:
 
 - `DEVELOPER_ID_CERTIFICATE_P12_BASE64`
 - `DEVELOPER_ID_CERTIFICATE_PASSWORD`
 - `APP_STORE_CONNECT_API_KEY_P8_BASE64`
+- `HOMEBREW_TAP_DISPATCH_TOKEN`
+
+Grant the repository access to these organization Actions variables:
+
 - `APP_STORE_CONNECT_KEY_ID`
 - `APP_STORE_CONNECT_ISSUER_ID`
+
+The workflow reads credentials through `secrets` and the key and issuer IDs
+through `vars`. Avoid duplicate repository or environment settings with the
+same names, because they override the organization settings. The Homebrew
+token must be able to dispatch events to `CaptureContext/homebrew-tap`.
 
 The certificate archive must contain a Developer ID Application identity. The
 API key must have permission to submit software to Apple's notarization service.
