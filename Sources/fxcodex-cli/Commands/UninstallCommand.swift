@@ -52,7 +52,7 @@ extension AppCommand {
 
 			try await client.uninstallData(disposition)
 
-			let method: SelfUninstallMethod = try installation.uninstall(
+			let method: SelfUninstallMethod = try await installation.uninstall(
 				currentExecutableURL()
 			)
 

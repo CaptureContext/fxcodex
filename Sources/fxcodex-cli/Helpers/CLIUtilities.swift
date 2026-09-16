@@ -3,6 +3,7 @@ import ConsoleKitTerminal
 import Darwin
 import Foundation
 import FXCodexClient
+import Subprocess
 
 @MainActor
 internal final class TerminalReporter {
@@ -55,6 +56,8 @@ internal final class TerminalReporter {
 internal func replaceProcess(
 	with invocation: CommandInvocation
 ) throws -> Never {
+	// Process replacement keeps Codex's PID, terminal, and signal handling intact.
+	// Subprocess runs child processes and does not provide an exec replacement API.
 	for (key, value) in invocation.environment {
 		guard setenv(key, value, 1) == 0 else { throw POSIXError(.init(rawValue: errno) ?? .EIO) }
 	}
@@ -80,24 +83,46 @@ internal func replaceProcess(
 internal func runProcess(
 	_ invocation: CommandInvocation,
 	suppressOutput: Bool = false
-) throws -> Int32 {
-	let process: Process = .init()
-	process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-	process.arguments = [invocation.executable] + invocation.arguments
-	process.environment = currentEnvironment().merging(
+) async throws -> Int32 {
+	let environment: [String: String] = currentEnvironment().merging(
 		invocation.environment,
 		uniquingKeysWith: { _, newValue in newValue }
 	)
+	let configuration: Subprocess.Configuration = .init(
+		executable: invocation.executable.contains("/")
+		? .path(.init(invocation.executable))
+		: .name(invocation.executable),
+		arguments: .init(
+			executablePathOverride: invocation.executable,
+			remainingValues: invocation.arguments
+		),
+		environment: .custom(.init(uniqueKeysWithValues: environment.map { key, value in
+			(.init(stringLiteral: key), value)
+		}))
+	)
+	let status: TerminationStatus
 
 	if suppressOutput {
-		process.standardOutput = FileHandle.nullDevice
-		process.standardError = FileHandle.nullDevice
+		status = try await Subprocess.run(
+			configuration,
+			input: .currentStandardInput,
+			output: .discarded,
+			error: .discarded
+		).terminationStatus
+
+	} else {
+		status = try await Subprocess.run(
+			configuration,
+			input: .currentStandardInput,
+			output: .currentStandardOutput,
+			error: .currentStandardError
+		).terminationStatus
 	}
 
-	try process.run()
-	process.waitUntilExit()
-
-	return process.terminationStatus
+	switch status {
+	case let .exited(code): return code
+	case let .signaled(signal): return signal
+	}
 }
 
 internal func forwardedArguments(from arguments: [String]) -> [String] {

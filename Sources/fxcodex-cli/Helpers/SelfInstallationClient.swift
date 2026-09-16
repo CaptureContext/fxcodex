@@ -8,7 +8,7 @@ internal enum SelfUninstallMethod: String, Encodable, Sendable {
 }
 
 internal struct SelfInstallationClient: Sendable {
-	internal var uninstall: @Sendable (URL) throws -> SelfUninstallMethod
+	internal var uninstall: @Sendable (URL) async throws -> SelfUninstallMethod
 }
 
 extension DependencyValues {
@@ -18,7 +18,7 @@ extension DependencyValues {
 				let executableURL: URL = executableURL.standardizedFileURL.resolvingSymlinksInPath()
 
 				if isHomebrewManagedExecutable(executableURL) {
-					let exitCode: Int32 = try runProcess(.init(
+					let exitCode: Int32 = try await runProcess(.init(
 						executable: "brew",
 						arguments: ["uninstall", "fxcodex"],
 						environment: [:]

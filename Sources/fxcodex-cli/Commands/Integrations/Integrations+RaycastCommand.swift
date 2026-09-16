@@ -184,10 +184,12 @@ extension AppCommand.IntegrationsCommand.Raycast {
 						.init(
 							value: InteractiveComponent.app.rawValue,
 							label: "Raycast",
+							hint: nil
 						),
 						.init(
 							value: InteractiveComponent.betaApp.rawValue,
 							label: "Raycast Beta",
+							hint: nil
 						),
 						.init(
 							value: InteractiveComponent.scriptCommand.rawValue,
@@ -388,7 +390,7 @@ extension AppCommand.IntegrationsCommand.Raycast.Install {
 		case let .command(invocation):
 			reporter?.info("Installing \(edition.displayName) using Homebrew…")
 
-			let exitCode: Int32 = try runProcess(
+			let exitCode: Int32 = try await runProcess(
 				invocation,
 				suppressOutput: suppressOutput
 			)

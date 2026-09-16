@@ -15,6 +15,10 @@ let package = Package(
 	],
 	dependencies: [
 		.package(
+			url: "https://github.com/swiftlang/swift-subprocess.git",
+			.upToNextMajor(from: "1.0.0")
+		),
+		.package(
 			url: "https://github.com/apple/swift-argument-parser.git",
 			.upToNextMajor(from: "1.8.2")
 		),
@@ -66,6 +70,10 @@ let package = Package(
 				.product(
 					name: "Promptberry",
 					package: "Promptberry"
+				),
+				.product(
+					name: "Subprocess",
+					package: "swift-subprocess"
 				),
 			],
 			path: "Sources/fxcodex-cli"
