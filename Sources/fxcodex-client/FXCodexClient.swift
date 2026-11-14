@@ -26,6 +26,7 @@ public struct FXCodexClient: Sendable {
 	public var useWorkspaceByID: @Sendable (WorkspaceID) async throws -> Void
 	public var openWorkspace: @Sendable (String?) async throws -> Int32
 	public var openWorkspaceByID: @Sendable (WorkspaceID) async throws -> Int32
+	public var openURL: @Sendable (_ url: String, _ workspaceName: String) async throws -> URLDelivery
 	public var codexInvocation: @Sendable (String?, [String]) async throws -> CommandInvocation
 	public var status: @Sendable () async throws -> FXCodexStatus
 }
@@ -63,6 +64,7 @@ extension DependencyValues {
 				useWorkspaceByID: { try await manager.useWorkspace(id: $0) },
 				openWorkspace: manager.openWorkspace,
 				openWorkspaceByID: { try await manager.openWorkspace(id: $0) },
+				openURL: { try await manager.openURL($0, inWorkspaceNamed: $1) },
 				codexInvocation: { try await manager.codexInvocation(workspaceName: $0, arguments: $1) },
 				status: manager.status
 			)

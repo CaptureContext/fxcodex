@@ -1,3 +1,5 @@
+import AppKit
+import CoreServices
 import Dependencies
 import Foundation
 import Testing
@@ -151,6 +153,132 @@ struct CodexApplicationControllerTests {
 				try controller.rename(to: .codex)
 			}
 		}
+	}
+
+	@Test("Managed launches carry the workspace's Codex home and profile; primary carries none")
+	@MainActor
+	func launchConfiguration() async throws {
+		let fixture: ClientTestFixture = try .init()
+		defer { fixture.remove() }
+		let codexHomeURL: URL = fixture.rootURL.appending(path: "work/codex-home", directoryHint: .isDirectory)
+		let userDataURL: URL = fixture.rootURL.appending(path: "work/user-data", directoryHint: .isDirectory)
+		let work: Workspace = .init(
+			name: "work",
+			kind: .managed,
+			rootURL: fixture.rootURL,
+			codexHomeURL: codexHomeURL,
+			userDataURL: userDataURL
+		)
+		let primary: Workspace = .init(
+			name: Workspace.primaryName,
+			kind: .primary,
+			rootURL: fixture.rootURL,
+			codexHomeURL: nil,
+			userDataURL: nil
+		)
+		let controller: CodexApplicationController = self.controller(for: fixture)
+		let workConfiguration = try controller.launchConfiguration(for: work)
+		let primaryConfiguration = try controller.launchConfiguration(for: primary)
+
+		#expect(workConfiguration.createsNewApplicationInstance)
+		#expect(workConfiguration.environment == [
+			"CODEX_ELECTRON_USER_DATA_PATH": userDataURL.path,
+			"CODEX_HOME": codexHomeURL.path,
+		])
+		#expect(workConfiguration.arguments == ["--user-data-dir=\(userDataURL.path)"])
+		#expect(primaryConfiguration.createsNewApplicationInstance)
+		#expect(primaryConfiguration.environment.isEmpty)
+		#expect(primaryConfiguration.arguments.isEmpty)
+	}
+
+	@Test("Reads app link schemes from the installed bundle and drops web schemes")
+	@MainActor
+	func urlSchemes() async throws {
+		let fixture: ClientTestFixture = try .init()
+		defer { fixture.remove() }
+		_ = try fixture.makeApplication(
+			named: "Codex",
+			urlSchemes: [
+				["codex", "http", "HTTPS", "Codex"],
+			]
+		)
+
+		#expect(try self.controller(for: fixture).urlSchemes() == ["codex"])
+	}
+
+	@Test("Link schemes need an installed Codex")
+	@MainActor
+	func urlSchemesWithoutApplication() async throws {
+		let fixture: ClientTestFixture = try .init()
+		defer { fixture.remove() }
+
+		#expect(throws: FXCodexError.applicationNotFound) {
+			try self.controller(for: fixture).urlSchemes()
+		}
+	}
+
+	@Test("The GURL Apple Event is addressed to one process ID and carries the link")
+	func getURLEvent() throws {
+		let link: String = "codex://auth/callback?code=abc"
+		let event: NSAppleEventDescriptor = CodexApplicationController.getURLEvent(
+			url: try #require(URL(string: link)),
+			processID: 4_321
+		)
+		let target: NSAppleEventDescriptor = try #require(
+			event.attributeDescriptor(forKeyword: AEKeyword(keyAddressAttr))
+		)
+		let processID: Int32 = target.data.withUnsafeBytes { $0.load(as: Int32.self) }
+
+		#expect(event.eventClass == AEEventClass(kInternetEventClass))
+		#expect(event.eventID == AEEventID(kAEGetURL))
+		#expect(target.descriptorType == DescType(typeKernelProcessID))
+		#expect(processID == 4_321)
+		#expect(event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue == link)
+	}
+
+	@Test("Apple Event failures explain what to do")
+	func appleEventFailureMessages() {
+		let denied: String = CodexApplicationController.appleEventFailureMessage(
+			code: Int(errAEEventNotPermitted),
+			processID: 12
+		)
+		let gone: String = CodexApplicationController.appleEventFailureMessage(
+			code: Int(procNotFound),
+			processID: 12
+		)
+		let rejected: String = CodexApplicationController.appleEventFailureMessage(
+			code: Int(errAEEventNotHandled),
+			processID: 12
+		)
+
+		#expect(denied.contains("Privacy & Security > Automation"))
+		#expect(gone == "Codex (pid 12) is no longer running.")
+		#expect(rejected == "Codex (pid 12) did not accept the link.")
+	}
+
+	@Test("A handler error in the reply counts as a failed delivery")
+	func replyHandlerError() {
+		let success: NSAppleEventDescriptor = .appleEvent(
+			withEventClass: AEEventClass(kCoreEventClass),
+			eventID: AEEventID(kAEAnswer),
+			targetDescriptor: nil,
+			returnID: AEReturnID(kAutoGenerateReturnID),
+			transactionID: AETransactionID(kAnyTransactionID)
+		)
+		let failure: NSAppleEventDescriptor = .appleEvent(
+			withEventClass: AEEventClass(kCoreEventClass),
+			eventID: AEEventID(kAEAnswer),
+			targetDescriptor: nil,
+			returnID: AEReturnID(kAutoGenerateReturnID),
+			transactionID: AETransactionID(kAnyTransactionID)
+		)
+		failure.setParam(
+			NSAppleEventDescriptor(int32: Int32(errAEEventNotHandled)),
+			forKeyword: AEKeyword(keyErrorNumber)
+		)
+
+		#expect(CodexApplicationController.handlerErrorCode(in: success) == nil)
+		#expect(CodexApplicationController.handlerErrorCode(in: failure) == Int(errAEEventNotHandled))
 	}
 
 	@MainActor

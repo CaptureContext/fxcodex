@@ -32,6 +32,7 @@ name.
 - [Quick start](#quick-start)
 - [Desktop and terminal usage](#desktop-and-terminal-usage)
 - [Managing workspaces](#managing-workspaces)
+- [Delivering links to a workspace](#delivering-links-to-a-workspace)
 - [App naming](#app-naming)
 - [Updates](#updates)
 - [Integration attributes](#integration-attributes)
@@ -195,6 +196,7 @@ Arguments after `--` are forwarded unchanged to `codex` or `codex exec`.
 | Create and select it | `fxcodex workspace create <name> --use` |
 | Create and open it | `fxcodex workspace create <name> --open` |
 | Open or focus a workspace | `fxcodex open [name]` |
+| Deliver a link to one workspace | `fxcodex open-url <name> <url>` |
 | Select the current workspace | `fxcodex use [name]` |
 | Rename the current managed workspace | `fxcodex workspace rename <new-name>` |
 | Rename a specified managed workspace | `fxcodex workspace rename <old-name> <new-name>` |
@@ -221,6 +223,39 @@ fxcodex workspace paths work --no-all --codex-home --user-data
 ```
 
 Raw components are `workspace-root`, `codex-home`, and `user-data`.
+
+## Delivering links to a workspace
+
+A plain `open codex://…` reaches whichever Codex instance macOS picks. To hand
+a link, such as a sign-in callback, to one workspace's Codex:
+
+```sh
+fxcodex open-url work 'codex://auth/callback?code=…'
+```
+
+If that workspace's Codex is running, fxcodex sends the link to its process
+only, as a `kAEGetURL` Apple Event addressed by process ID, the same event
+Launch Services would send. If it is not running, that workspace's Codex
+launches with its own Codex home, profile and the link. The link never goes
+through Launch Services' scheme routing.
+
+The command accepts the app-link schemes the installed Codex registers in its
+`CFBundleURLTypes` (`codex` today); `http` and `https` are not app links and are
+rejected. It exits non-zero with a one-line message on stderr when the workspace
+doesn't exist, Codex doesn't handle the link, or delivery fails. `--json`
+returns the workspace, process ID and `delivery` (`apple-event` or `launch`).
+
+The first link sent to a running instance can trigger macOS's Automation prompt
+("… wants to control Codex") for the app that runs fxcodex, such as Terminal or
+Arx. If it was declined, allow it in System Settings > Privacy & Security >
+Automation.
+
+In Arx, Air Traffic Control can run a script for `codex://` links, chosen per
+profile, with the link as `$1`:
+
+```sh
+fxcodex open-url work "$1"
+```
 
 ## App naming
 
@@ -380,6 +415,7 @@ integrations:
 fxcodex --json status --all
 FXCODEX_JSON=1 fxcodex workspace list
 fxcodex workspace paths work --json --no-user-data
+fxcodex open-url work 'codex://…' --json
 fxcodex integrations attributes get raycast --path script_commands --json
 fxcodex integrations raycast install script-command \
   --directory "$HOME/.config/raycast/script-commands" \

@@ -51,7 +51,8 @@ final class ClientTestFixture {
 
 	func makeApplication(
 		named name: String,
-		bundleIdentifier: String = CodexApplicationController.bundleIdentifier
+		bundleIdentifier: String = CodexApplicationController.bundleIdentifier,
+		urlSchemes: [[String]] = []
 	) throws -> URL {
 		let applicationURL: URL = self.applicationsURL.appending(
 			path: "\(name).app",
@@ -66,12 +67,15 @@ final class ClientTestFixture {
 			withIntermediateDirectories: true,
 			attributes: nil
 		)
-		let information: [String: Any] = [
+		var information: [String: Any] = [
 			"CFBundleIdentifier": bundleIdentifier,
 			"CFBundleName": name,
 			"CFBundlePackageType": "APPL",
 			"CFBundleVersion": "1",
 		]
+		if !urlSchemes.isEmpty {
+			information["CFBundleURLTypes"] = urlSchemes.map { ["CFBundleURLSchemes": $0] }
+		}
 		let data: Data = try PropertyListSerialization.data(
 			fromPropertyList: information,
 			format: .xml,
@@ -113,6 +117,18 @@ actor CodexApplicationSpy {
 		let openedWorkspaceNames: [String]
 		let removedWorkspaceNames: [String]
 		let renamedWorkspaces: [WorkspaceRename]
+		let sentURLs: [SentURL]
+		let launchedURLs: [LaunchedURL]
+	}
+
+	struct SentURL: Equatable, Sendable {
+		let url: URL
+		let processID: Int32
+	}
+
+	struct LaunchedURL: Equatable, Sendable {
+		let workspaceName: String
+		let url: URL
 	}
 
 	struct WorkspaceRename: Equatable, Sendable {
@@ -130,14 +146,22 @@ actor CodexApplicationSpy {
 	private var processIDs: [String: Int32]
 	private var removedWorkspaceNames: [String] = []
 	private var renamedWorkspaces: [WorkspaceRename] = []
+	private var sentURLs: [SentURL] = []
+	private var launchedURLs: [LaunchedURL] = []
+	private let urlSchemesValue: [String]?
+	private let sendError: FXCodexError?
 
 	init(
 		applicationURL: URL? = nil,
 		openedProcessID: Int32 = 4_242,
 		processIDs: [String: Int32] = [:],
 		renameError: FXCodexError? = nil,
-		renameOutcome: CodexApplicationRenameResult.Outcome = .alreadyNamed
+		renameOutcome: CodexApplicationRenameResult.Outcome = .alreadyNamed,
+		urlSchemes: [String]? = ["codex"],
+		sendError: FXCodexError? = nil
 	) {
+		self.urlSchemesValue = urlSchemes
+		self.sendError = sendError
 		self.applicationURLValue = applicationURL
 		self.openedProcessID = openedProcessID
 		self.processIDs = processIDs
@@ -151,6 +175,9 @@ actor CodexApplicationSpy {
 			rename: { try await self.rename(to: $0) },
 			open: { await self.open($0) },
 			runningProcessID: { await self.runningProcessID(for: $0) },
+			urlSchemes: { try await self.urlSchemes() },
+			sendURL: { try await self.sendURL($0, toProcessID: $1) },
+			launchWithURL: { await self.launch($0, with: $1) },
 			removeRecord: { await self.removeRecord(for: $0.name) }
 		)
 	}
@@ -168,7 +195,9 @@ actor CodexApplicationSpy {
 			requestedApplicationNames: self.requestedApplicationNames,
 			openedWorkspaceNames: self.openedWorkspaceNames,
 			removedWorkspaceNames: self.removedWorkspaceNames,
-			renamedWorkspaces: self.renamedWorkspaces
+			renamedWorkspaces: self.renamedWorkspaces,
+			sentURLs: self.sentURLs,
+			launchedURLs: self.launchedURLs
 		)
 	}
 
@@ -203,6 +232,28 @@ actor CodexApplicationSpy {
 
 	private func runningProcessID(for workspace: Workspace) -> Int32? {
 		self.processIDs[workspace.name]
+	}
+
+	private func urlSchemes() throws -> [String] {
+		guard let urlSchemesValue else { throw FXCodexError.applicationNotFound }
+		return urlSchemesValue
+	}
+
+	private func sendURL(
+		_ url: URL,
+		toProcessID processID: Int32
+	) throws {
+		if let sendError { throw sendError }
+		self.sentURLs.append(.init(url: url, processID: processID))
+	}
+
+	private func launch(
+		_ workspace: Workspace,
+		with url: URL
+	) -> Int32 {
+		self.launchedURLs.append(.init(workspaceName: workspace.name, url: url))
+		self.processIDs[workspace.name] = self.openedProcessID
+		return self.openedProcessID
 	}
 
 	private func removeRecord(for name: String) {

@@ -220,6 +220,42 @@ actor CodexManager {
 		try await self.application.open(self.workspacesStorage.findWorkspaceByID(id))
 	}
 
+	/// Delivers an app link to one workspace's Codex instance.
+	///
+	/// A running instance gets a `kAEGetURL` Apple Event addressed to its process ID.
+	/// Otherwise a new instance launches with the workspace's environment and the link.
+	/// Neither path asks Launch Services to route the link by scheme.
+	func openURL(
+		_ rawURL: String,
+		inWorkspaceNamed name: String
+	) async throws -> URLDelivery {
+		let workspace: Workspace = try self.workspacesStorage.findWorkspace(named: name)
+		let schemes: [String] = try await self.application.urlSchemes()
+
+		guard
+			let url = URL(string: rawURL),
+			let scheme = url.scheme?.lowercased(),
+			schemes.contains(scheme)
+		else { throw FXCodexError.unsupportedURL(rawURL, supportedSchemes: schemes) }
+
+		if let processID = try await self.application.runningProcessID(workspace) {
+			try await self.application.sendURL(url, processID)
+			return .init(
+				workspace: workspace,
+				url: url,
+				processID: processID,
+				method: .appleEvent
+			)
+		}
+
+		return .init(
+			workspace: workspace,
+			url: url,
+			processID: try await self.application.launchWithURL(workspace, url),
+			method: .launch
+		)
+	}
+
 	func codexInvocation(
 		workspaceName: String?,
 		arguments: [String]

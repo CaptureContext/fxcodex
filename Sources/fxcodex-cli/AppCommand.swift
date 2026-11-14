@@ -37,6 +37,7 @@ internal struct AppCommand: AsyncParsableCommand {
 			WorkspaceCommand.Erase.self,
 			RenameApplicationCommand.self,
 			OpenCommand.self,
+			OpenURLCommand.self,
 			CLICommand.self,
 			ExecCommand.self,
 			StatusCommand.self,

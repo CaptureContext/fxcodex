@@ -40,7 +40,8 @@ let package = Package(
 		),
 		.package(
 			url: "https://github.com/pointfreeco/swift-custom-dump.git",
-			.upToNextMajor(from: "1.6.1")
+			// Keep the IssueReporting package graph used by Dependencies 1.14.
+			.upToNextMinor(from: "1.6.1")
 		),
 		.package(
 			url: "https://github.com/onmyway133/Promptberry.git",
