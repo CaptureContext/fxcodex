@@ -22,6 +22,8 @@ public enum FXCodexError: Error, Equatable, LocalizedError, Sendable {
 	case updateExecutableInvalid(URL)
 	case updateRequestFailed(Int)
 	case unsupportedSchemaVersion(SchemaVersion)
+	case unsupportedURL(String, supportedSchemes: [String])
+	case urlDeliveryFailed(String)
 	case workspaceAlreadyExists(String)
 	case workspaceIsRunning(String)
 	case workspaceNotFound(String)
@@ -49,6 +51,8 @@ public enum FXCodexError: Error, Equatable, LocalizedError, Sendable {
 		case .updateExecutableInvalid: "update_executable_invalid"
 		case .updateRequestFailed: "update_request_failed"
 		case .unsupportedSchemaVersion: "unsupported_schema_version"
+		case .unsupportedURL: "unsupported_url"
+		case .urlDeliveryFailed: "url_delivery_failed"
 		case .workspaceAlreadyExists: "workspace_already_exists"
 		case .workspaceIsRunning: "workspace_is_running"
 		case .workspaceNotFound: "workspace_not_found"
@@ -119,6 +123,12 @@ public enum FXCodexError: Error, Equatable, LocalizedError, Sendable {
 
 		case let .unsupportedSchemaVersion(version):
 			"Storage schema \(version) is unsupported. This fxcodex build supports schema 2.0."
+
+		case let .unsupportedURL(url, supportedSchemes):
+			"Codex does not handle '\(url)'. Supported schemes: \(supportedSchemes.map { "\($0)://" }.joined(separator: ", "))."
+
+		case let .urlDeliveryFailed(message):
+			"Could not deliver the link to Codex: \(message)"
 
 		case let .workspaceAlreadyExists(name):
 			"Workspace '\(name)' already exists."

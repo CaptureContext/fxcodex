@@ -12,6 +12,7 @@ fxcodex workspace list --json
 fxcodex workspace paths work --json
 fxcodex open work --json
 fxcodex open --workspace-id 00000000-0000-0000-0000-000000000001 --json
+fxcodex open-url work 'codex://auth/callback?code=…' --json
 fxcodex delete work personal --yes --json
 ```
 
@@ -82,6 +83,7 @@ The machine interface is available for:
 - `workspace rename`
 - `workspace use` and its root `use` alias
 - `workspace open` and its root `open` alias
+- `open-url`
 - `workspace delete` and its root `delete` alias
 - `workspace erase` and its root `erase` alias
 - `integrations attributes get`
@@ -100,6 +102,16 @@ installation also requires `--directory` unless an installed configuration
 already records the directory; this component is deprecated in favor of the
 extension. Extension installation requires `--yes` when Raycast is absent, or
 `--open-in-browser` to bypass Raycast installation.
+
+## Delivering a link
+
+`open-url <name> <url>` hands an app link to one workspace's Codex instance. A
+running instance receives a `kAEGetURL` Apple Event addressed to its process
+ID; a stopped one launches with the workspace's environment and the link. The
+response data contains `workspace_name`, `workspace_id`, `process_id` and
+`delivery` (`apple-event` or `launch`). Errors use `workspace_not_found`,
+`unsupported_url` (the scheme isn't one Codex registers, or the value isn't a
+URL), `application_not_found` and `url_delivery_failed`.
 
 ## Stable workspace identities
 

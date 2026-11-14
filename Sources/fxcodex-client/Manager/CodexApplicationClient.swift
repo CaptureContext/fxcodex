@@ -8,6 +8,9 @@ struct CodexApplicationClient: Sendable {
 	var rename: @Sendable (CodexApplicationName) async throws -> CodexApplicationRenameResult
 	var open: @Sendable (Workspace) async throws -> Int32
 	var runningProcessID: @Sendable (Workspace) async throws -> Int32?
+	var urlSchemes: @Sendable () async throws -> [String]
+	var sendURL: @Sendable (_ url: URL, _ processID: Int32) async throws -> Void
+	var launchWithURL: @Sendable (_ workspace: Workspace, _ url: URL) async throws -> Int32
 	var removeRecord: @Sendable (_ workspace: Workspace) async throws -> Void
 }
 
@@ -30,6 +33,18 @@ extension DependencyValues {
 				runningProcessID: {
 					let controller: CodexApplicationController = await .init()
 					return try await controller.runningProcessID(for: $0)
+				},
+				urlSchemes: {
+					let controller: CodexApplicationController = await .init()
+					return try await controller.urlSchemes()
+				},
+				sendURL: { url, processID in
+					let controller: CodexApplicationController = await .init()
+					try await controller.send(url: url, toProcessID: processID)
+				},
+				launchWithURL: { workspace, url in
+					let controller: CodexApplicationController = await .init()
+					return try await controller.launch(workspace: workspace, with: url)
 				},
 				removeRecord: {
 					let controller: CodexApplicationController = await .init()

@@ -6,12 +6,14 @@ CODESIGN="${CODESIGN:-codesign}"
 SHASUM="${SHASUM:-shasum}"
 SIGNING_IDENTITY="${SIGNING_IDENTITY:-}"
 SIGNING_KEYCHAIN="${SIGNING_KEYCHAIN:-}"
+ENTITLEMENTS="${ENTITLEMENTS:-$(dirname -- "$0")/fxcodex.entitlements}"
 
 usage() {
 	printf '%s\n' \
 		"Usage: SIGNING_IDENTITY=<identity> ./Scripts/sign-release.sh <executable>..." \
 		"" \
-		"Signs each executable with hardened runtime and a secure timestamp," \
+		"Signs each executable with hardened runtime, the entitlements in" \
+		"Scripts/fxcodex.entitlements (override with ENTITLEMENTS) and a secure timestamp," \
 		"verifies the signature, and replaces its adjacent SHA-256 checksum." \
 		"Set SIGNING_KEYCHAIN when the identity is stored in a non-default keychain."
 }
@@ -19,6 +21,11 @@ usage() {
 if [ -z "$SIGNING_IDENTITY" ] || [ "$#" -eq 0 ]; then
 	usage >&2
 	exit 64
+fi
+
+if [ ! -f "$ENTITLEMENTS" ]; then
+	printf 'Missing entitlements: %s\n' "$ENTITLEMENTS" >&2
+	exit 1
 fi
 
 for executable in "$@"; do
@@ -32,6 +39,7 @@ for executable in "$@"; do
 			--force \
 			--keychain "$SIGNING_KEYCHAIN" \
 			--options runtime \
+			--entitlements "$ENTITLEMENTS" \
 			--sign "$SIGNING_IDENTITY" \
 			--timestamp \
 			"$executable"
@@ -39,6 +47,7 @@ for executable in "$@"; do
 		"$CODESIGN" \
 			--force \
 			--options runtime \
+			--entitlements "$ENTITLEMENTS" \
 			--sign "$SIGNING_IDENTITY" \
 			--timestamp \
 			"$executable"
